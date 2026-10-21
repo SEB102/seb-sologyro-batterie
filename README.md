@@ -36,6 +36,15 @@ Un coup **vers le bas** joue la grosse caisse, un coup **vers le haut** la cymba
 
 Historique : une version précédente déduisait le sens de la gravité et d'un axe « baguette » appris. Sur un iPhone tenu debout dans la main (enregistrement du 21/10/2026), cet axe était presque vertical et la décision basculait toute seule au moindre mouvement (« tout devient grosse caisse ou cymbale » au bout de 20 à 30 s). Le sens de rotation, lui, reste juste même quand la tenue varie : vérifié en simulation jusqu'à 60° de rotation du téléphone dans la main et ±45° d'inclinaison, en mode « sommet » et « précoce ».
 
+## Prototype : 4 gestes (page à part)
+
+**https://seb102.github.io/seb-sologyro-batterie/gestes.html** — le téléphone apprend 4 gestes et joue un son pour chacun : coup vers le bas → grosse caisse, vers le haut → cymbale, sur le côté → caisse claire, petit coup sec du poignet → charleston. L'app principale n'est pas touchée.
+
+- **Apprentissage** (~5 min) : 10 coups de chaque geste, guidés à l'écran. Le modèle reste dans le téléphone (bouton « Réapprendre mes gestes »).
+- **Reconnaissance** : chaque coup est détecté sur la rotation de tous les axes, résumé (forme de la rotation et de l'accélération), puis comparé aux exemples (« plus proches voisins », `gestes.js`, sans bibliothèque).
+- **Attente avant de jouer** : plus on attend, plus le geste est reconnu. La page affiche la précision obtenue sur tes propres exemples pour 0, 30, 60 et 100 ms, choisit la plus courte qui atteint 95 %, et on peut changer.
+- Mesuré sur des gestes simulés : 73 à 83 % à 0 ms (grosse caisse et charleston se confondent), 95 à 98 % à 30 ms, 100 % à 60 ms ; jeu mélangé de 12 coups : 12/12 à 30 et à 60 ms. Tests : `node test-gestes.js`.
+
 ## Licence
 
 SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENSE) : partage et adaptation libres en citant l'auteur, sans usage commercial.
