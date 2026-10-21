@@ -1,6 +1,6 @@
 # SEB-SOLOGYRO-BATTERIE
 
-Le téléphone seul : il sert de baguette **et joue lui-même** les sons. Chaque coup sec, dans n'importe quel sens, joue à tour de rôle **grosse caisse** puis **cymbale**. Pas d'ordinateur, pas de réseau : aucun retard dû au Wi-Fi.
+Le téléphone seul : il sert de baguette **et joue lui-même** les sons. Un coup sec **vers le sol** joue la **grosse caisse**, un coup **vers le plafond** la **cymbale**, quelle que soit la tenue du téléphone. Pas d'ordinateur, pas de réseau : aucun retard dû au Wi-Fi.
 
 Version « solo » de [SEB-GYROBATTERIE](https://github.com/SEB102/seb-gyrobatterie) (son sur l'ordinateur) et [SEB-MULTIGYRO-BATTERIE](https://github.com/SEB102/seb-multigyro-batterie) (plusieurs téléphones).
 
@@ -35,6 +35,10 @@ Case à cocher sur le téléphone : le coup part **dès que le geste dépasse le
 
 Mesures (navigateur, gestes simulés à 60 mesures/s) : environ **78 ms de gagnés** en moyenne (de 33 à 133 ms selon la vitesse du geste ; plus le geste est lent, plus le gain est grand). Désactivée par défaut : le mode « sommet » reste inchangé.
 
+## Grosse caisse en bas, cymbale en haut (3D)
+
+C'est le **sens du coup dans la pièce** qui décide : un coup qui part **vers le sol** joue la grosse caisse, un coup **vers le plafond** la cymbale, quelle que soit la façon de tenir le téléphone (bras levé et téléphone pointé vers le haut, un coup vers le bas reste une grosse caisse). Le téléphone projette sa propre accélération sur la direction de la gravité et en déduit la vitesse verticale du geste (`creerVerticale` dans `detecteur.js`) ; le moment du coup reste donné par le gyroscope. Testé dans 7 inclinaisons du téléphone, avec les deux conventions de signe des navigateurs, et sur les téléphones sans mesure d'accélération « sans gravité ».
+
 ## Licence
 
 SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENSE) : partage et adaptation libres en citant l'auteur, sans usage commercial.
@@ -42,5 +46,5 @@ SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENS
 ## Fichiers
 
 - `index.html` : la page du téléphone (capteur, calibration, détection, son, diagnostic)
-- `detecteur.js` : détection des coups, calibration, alternance, sensibilité · `sons.js` : grosse caisse et cymbale synthétisées
-- `test.js` : `node test.js` (27 tests : détection, déclenchement précoce, alternance, calibration dans 5 configurations de capteur, sons)
+- `detecteur.js` : détection des coups, calibration, sens 3D, sensibilité · `sons.js` : grosse caisse et cymbale synthétisées
+- `test.js` : `node test.js` (34 tests : détection, déclenchement précoce, sens 3D, calibration dans 5 configurations de capteur, sons)
