@@ -9,7 +9,7 @@ Version « solo » de [SEB-GYROBATTERIE](https://github.com/SEB102/seb-gyrobatte
 Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-sologyro-batterie/**.
 
 1. **Toucher pour démarrer** : un seul toucher active le son et les mouvements (iPhone : autoriser « Mouvement »).
-2. La première fois : **apprentissage des 4 gestes** (10 coups de chacun, guidés par des bips ; voir « Les 4 gestes »).
+2. La première fois : **apprentissage des 4 gestes** (15 coups de chacun, guidés par des bips ; voir « Les 4 gestes »).
 3. Jouer. Ajouter la page à l'écran d'accueil pour l'avoir en un toucher (iPhone : Partager → « Sur l'écran d'accueil » ; Android : ⋮ → « Ajouter à l'écran d'accueil »).
 
 - **Sensibilité** (0 à 100 %, **80 % par défaut**) : 100 % = le geste le plus léger suffit.
@@ -34,7 +34,7 @@ Le coup part **dès que le geste dépasse le seuil**, sans attendre le sommet du
 
 Le téléphone apprend **4 gestes** : coup **vers le bas**, **vers le haut**, **vers la droite**, **vers la gauche** (grosse caisse, cymbale, caisse claire, « Oh ! »).
 
-- **Apprentissage** (environ 1 min, au premier démarrage, puis bouton « Réapprendre mes gestes ») : 10 coups de chaque geste, guidés à l'écran et **au son** joués par le téléphone : 1 bip l'écoute commence · 2 bips geste enregistré · 3 bips montants terminé. Seuls les coups dans le sens du geste comptent : le retour du poignet n'est ni compté ni appris, et un coup qui déborde sur le geste suivant est ignoré. Les gestes appris restent dans le téléphone et servent aux trois apps (SEB-GYROBATTERIE, SEB-MULTIGYRO-BATTERIE, SEB-SOLOGYRO-BATTERIE).
+- **Apprentissage** (environ 1 min 30, au premier démarrage, puis bouton « Réapprendre mes gestes ») : 15 coups de chaque geste (10 jusqu'au 21/10/2026 ; 15 réduisent les erreurs d'environ deux tiers en simulation), guidés à l'écran et **au son** joués par le téléphone : 1 bip l'écoute commence · 2 bips geste enregistré · 3 bips montants terminé. Seuls les coups dans le sens du geste comptent : le retour du poignet n'est ni compté ni appris, et un coup qui déborde sur le geste suivant est ignoré. Les gestes appris restent dans le téléphone et servent aux trois apps (SEB-GYROBATTERIE, SEB-MULTIGYRO-BATTERIE, SEB-SOLOGYRO-BATTERIE).
 - **Détection** : sur la vitesse de rotation de tous les axes ; le coup part dès que le seuil est franchi. Un coup est fini dès que la rotation retombe sous le tiers de son sommet (pause minimale 80 ms) ; le rebond du poignet, plus faible et en sens inverse, ne compte pas. Tous les coups détectés jusqu'à 6 par seconde, environ 97 % à 8 par seconde.
 - **Reconnaissance** : la forme de la rotation et de l'accélération est comparée aux exemples appris (plus proches voisins, `gestes.js`). Le retour du poignet après un coup vers la droite est un mouvement vers la gauche : il joue le son de la gauche.
 - **Attente avant de jouer** : le téléphone affiche la précision obtenue sur tes propres exemples pour 0, 30, 60 et 100 ms, choisit la plus courte qui atteint 95 %, et on peut changer (plus longue = mieux reconnu, mais le son arrive plus tard).

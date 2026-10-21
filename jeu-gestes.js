@@ -10,7 +10,7 @@
     { id: 'droite', nom: 'coup vers la DROITE →', son: 'Caisse claire', couleur: '#4c9be8' },
     { id: 'gauche', nom: '← coup vers la GAUCHE', son: 'Wobble « Ho » (fermé)', couleur: '#b46be8' },
   ];
-  const PAR_GESTE = 10, FENETRE = 200;   // ms de mesures gardées après chaque coup
+  const PAR_GESTE = 15, FENETRE = 200;   // ms de mesures gardées après chaque coup
   // Mêmes gestes pour les trois apps (même adresse seb102.github.io) : appris une fois, valables partout
   const CLE = 'gyro-gestes-4';
   const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || '{}'); } catch { return {}; } };
