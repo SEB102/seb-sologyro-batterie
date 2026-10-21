@@ -152,7 +152,7 @@
       mesures++;
     }
     const sens = () => (mesures < 2 ? 0 : vitesse > 0 ? 1 : vitesse < 0 ? -1 : 0);
-    return { ajouter, sens };
+    return { ajouter, sens, vitesse: () => vitesse };   // vitesse : pour l'enregistrement de diagnostic
   }
 
   // Sensibilité affichée en % (100 % = le geste le plus léger suffit) ↔ seuil de déclenchement
