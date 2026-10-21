@@ -50,15 +50,15 @@
 </div>
 <button id="apprendre" class="secondaire">Réapprendre mes gestes</button>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-e</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-f</div>
 <script>
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="gestes.js?v=gestes-e"></script>
-<script src="detecteur.js?v=gestes-e"></script>
-<script src="sons.js?v=gestes-e"></script>
+<script src="gestes.js?v=gestes-f"></script>
+<script src="detecteur.js?v=gestes-f"></script>
+<script src="sons.js?v=gestes-f"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const GESTES = [
@@ -123,14 +123,23 @@ function lancerApprentissage() {
   $('flash').innerHTML = '<div style="font-size:20px">Prépare-toi…<br><span style="font-size:15px;font-weight:400;color:#bbb">tiens le téléphone comme pour jouer</span></div>';
   setTimeout(() => { if (apprentissage && apprentissage.etape === 0 && apprentissage.coups === 0) { consigneApprentissage(); bipDebut(); } }, 1500);
 }
+// Sens d'un coup : rotation cumulée pendant ses 80 premières ms
+const sensDuCoup = (mesures, t) => mesures.filter((m) => m.t >= t && m.t <= t + 80).reduce((s, m) => s.map((x, i) => x + m.rot[i]), [0, 0, 0]);
 function coupApprentissage(t) {
   if (t < apprentissage.debut) return;
-  const g = GESTES[apprentissage.etape];
+  const etape = apprentissage.etape, g = GESTES[etape];
   setTimeout(() => {   // attendre la fin de la fenêtre de mesure
-    apprentissage.exemples.push({ geste: g.id, t: Math.round(t), mesures: copie(t) });
+    // un coup détecté juste avant la fin du geste précédent ne compte pas pour le suivant
+    if (!apprentissage || apprentissage.etape !== etape) return;
+    const mesures = copie(t), sens = sensDuCoup(mesures, t);
+    // retour du poignet : tourne en sens inverse des coups déjà comptés pour ce geste → ni compté, ni appris
+    if (apprentissage.sens && sens.reduce((s, x, i) => s + x * apprentissage.sens[i], 0) < 0) return;
+    const n = Math.hypot(...sens) || 1;
+    apprentissage.sens = (apprentissage.sens || [0, 0, 0]).map((x, i) => x + sens[i] / n);
+    apprentissage.exemples.push({ geste: g.id, t: Math.round(t), mesures });
     apprentissage.coups++;
     if (apprentissage.coups < PAR_GESTE) return consigneApprentissage();
-    apprentissage.etape++; apprentissage.coups = 0;
+    apprentissage.etape++; apprentissage.coups = 0; apprentissage.sens = null;
     if (apprentissage.etape < GESTES.length) {
       apprentissage.debut = performance.now() + 1200;
       $('flash').innerHTML = `<div style="font-size:20px">C'est noté !<br><span style="font-size:15px;font-weight:400;color:#bbb">geste suivant : ${GESTES[apprentissage.etape].nom}</span></div>`;
