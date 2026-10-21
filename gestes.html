@@ -18,7 +18,7 @@
   button.secondaire { font-size: 15px; padding: 12px; background: #2a2a2a; color: var(--texte); }
   #flash { flex: 1; min-height: 170px; border-radius: 16px; background: var(--carte); display: flex; align-items: center; justify-content: center;
            text-align: center; padding: 12px; font-size: 26px; font-weight: 600; transition: background .25s; }
-  .gestes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: var(--doux); }
+  .gestes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 13px; color: var(--doux); }
   .gestes div { background: var(--carte); border-radius: 10px; padding: 8px 10px; border-left: 5px solid var(--c); }
   .gestes b { color: var(--texte); display: block; font-size: 14px; }
   #precision { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
@@ -34,13 +34,12 @@
 </head>
 <body>
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
-<h1>SEB-SOLOGYRO-BATTERIE <small>4 gestes · prototype</small></h1>
-<div id="etat">Le téléphone apprend tes 4 gestes, puis joue le son de chacun.</div>
+<h1>SEB-SOLOGYRO-BATTERIE <small>3 gestes · prototype</small></h1>
+<div id="etat">Le téléphone apprend tes 3 gestes, puis joue le son de chacun.</div>
 <div class="gestes">
   <div style="--c:#e8643c"><b>↓ coup vers le bas</b>grosse caisse</div>
   <div style="--c:#e8c43c"><b>↑ coup vers le haut</b>cymbale</div>
-  <div style="--c:#4c9be8"><b>→ coup sur le côté</b>caisse claire</div>
-  <div style="--c:#4cc38a"><b>⤵ petit coup sec du poignet</b>charleston</div>
+  <div style="--c:#4c9be8"><b>→ coup vers la droite</b>caisse claire</div>
 </div>
 <button id="demarrer">Toucher pour démarrer</button>
 <div id="flash">—</div>
@@ -50,25 +49,24 @@
 </div>
 <button id="apprendre" class="secondaire">Réapprendre mes gestes</button>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-a</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-b</div>
 <script>
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="gestes.js?v=gestes-a"></script>
-<script src="detecteur.js?v=gestes-a"></script>
-<script src="sons.js?v=gestes-a"></script>
+<script src="gestes.js?v=gestes-b"></script>
+<script src="detecteur.js?v=gestes-b"></script>
+<script src="sons.js?v=gestes-b"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const GESTES = [
   { id: 'bas', nom: 'coup vers le BAS ↓', son: 'Grosse caisse', couleur: '#e8643c' },
   { id: 'haut', nom: 'coup vers le HAUT ↑', son: 'Cymbale', couleur: '#e8c43c' },
-  { id: 'cote', nom: 'coup sur le CÔTÉ →', son: 'Caisse claire', couleur: '#4c9be8' },
-  { id: 'charleston', nom: 'petit coup SEC du poignet ⤵', son: 'Charleston fermé', couleur: '#4cc38a' },
+  { id: 'droite', nom: 'coup vers la DROITE →', son: 'Caisse claire', couleur: '#4c9be8' },
 ];
 const PAR_GESTE = 10, ATTENTES = [0, 30, 60, 100], FENETRE = 200;   // ms de mesures gardées après chaque coup
-const CLE = 'gyro-gestes';
+const CLE = 'gyro-gestes-3';   // 3 gestes : un apprentissage fait avec 4 gestes est redemandé
 const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || '{}'); } catch { return {}; } };
 const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
@@ -99,7 +97,7 @@ let apprentissage = null;   // { etape, exemples, coups, debut }
 function consigneApprentissage() {
   const g = GESTES[apprentissage.etape];
   $('flash').style.background = '#234'; $('flash').style.color = '';
-  $('flash').innerHTML = `<div style="font-size:20px;line-height:1.5">Geste ${apprentissage.etape + 1} sur 4 : ${g.nom}<br>`
+  $('flash').innerHTML = `<div style="font-size:20px;line-height:1.5">Geste ${apprentissage.etape + 1} sur ${GESTES.length} : ${g.nom}<br>`
     + `<span style="font-size:15px;font-weight:400;color:#bbb">${g.son} · fais ${PAR_GESTE} coups variés (forts, doux, bras haut, bras bas)</span>`
     + `<div style="font-size:30px;margin-top:8px">${apprentissage.coups} / ${PAR_GESTE}</div></div>`;
 }

@@ -16,8 +16,7 @@ const rotation = (a, ang, v) => {   // formule de Rodrigues
 const TYPES = {
   bas: { axe: [0, 1, 0], amp: 50, duree: 140 },          // le bout descend
   haut: { axe: [0, 1, 0], amp: -50, duree: 140 },        // le bout monte
-  cote: { axe: [0, 0, 1], amp: 50, duree: 140 },         // le bout part sur le côté
-  charleston: { axe: [0, 1, 0], amp: 18, duree: 55 },    // petit coup sec du poignet
+  droite: { axe: [0, 0, 1], amp: -50, duree: 140 },      // le bout part vers la droite
 };
 function seance(sequence, { hz = 60, calme = 900 } = {}) {
   const dt = 1000 / hz, ech = [], vrais = [];
@@ -55,9 +54,9 @@ function exemples(sequence) {
   });
 }
 const SEQUENCE = [];
-for (let k = 0; k < 15; k++) for (const g of ['bas', 'haut', 'cote', 'charleston']) SEQUENCE.push(g);
+for (let k = 0; k < 15; k++) for (const g of ['bas', 'haut', 'droite']) SEQUENCE.push(g);
 
-test('détection : chaque geste (y compris sur le côté et le petit coup sec) donne exactement un coup', () => {
+test('détection : chaque geste (y compris vers la droite) donne exactement un coup', () => {
   const ex = exemples(SEQUENCE);
   assert.strictEqual(ex.length, SEQUENCE.length, `${ex.length} coups pour ${SEQUENCE.length} gestes`);
   assert.deepStrictEqual(ex.map((e) => e.geste), SEQUENCE);
@@ -68,13 +67,13 @@ test('reconnaissance : précision selon l\'attente après le déclenchement (15 
   for (const attente of [0, 30, 60, 100]) {
     const r = G.evaluer(ex, attente);
     lignes.push(`      attente ${String(attente).padStart(3)} ms : ${Math.round(r.precision * 100)} %` + (Object.keys(r.confusions).length ? '  (confusions : ' + Object.entries(r.confusions).map(([c, n]) => `${c} ×${n}`).join(', ') + ')' : ''));
-    if (attente === 60) assert.ok(r.precision >= 0.9, `${Math.round(r.precision * 100)} % à 60 ms`);
+    if (attente === 30) assert.ok(r.precision >= 0.95, `${Math.round(r.precision * 100)} % à 30 ms`);
   }
   console.log(lignes.join('\n'));
 });
 
 test('reconnaissance : un modèle entraîné sur une séance reconnaît les gestes d\'une autre séance', () => {
-  const app = exemples(SEQUENCE), jeu = exemples(['cote', 'bas', 'charleston', 'haut', 'bas', 'cote', 'haut', 'charleston', 'bas', 'haut', 'cote', 'charleston']);
+  const app = exemples(SEQUENCE), jeu = exemples(['droite', 'bas', 'haut', 'bas', 'droite', 'haut', 'haut', 'droite', 'bas', 'haut', 'droite', 'bas']);
   const modele = G.entrainer(app.map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 60) })));
   const trouves = jeu.map((e) => modele.classer(G.resumer(e.mesures, e.t, 60)));
   const justes = trouves.filter((g, i) => g === jeu[i].geste).length;
