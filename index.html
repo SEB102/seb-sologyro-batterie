@@ -26,7 +26,9 @@
   label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--doux); }
   input[type=range] { flex: 1; }
   .reglages { display: flex; flex-direction: column; gap: 10px; }
-  #diagnostic, #gain { font-size: 12px; color: var(--doux); }
+  #diagnostic, #gain, #etatEnreg { font-size: 12px; color: var(--doux); }
+  .enreg { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .enreg button { font-size: 13px; padding: 8px 10px; }
   .cartouche { margin-top: 8px; border-top: 1px solid #2a2a2a; text-align: center; color: var(--doux); font-size: 12px; letter-spacing: .12em; line-height: 1.7; padding: 10px 0 0; }
   .cartouche a { color: #a9b6ff; text-decoration: underline; text-underline-offset: 3px; }
 </style>
@@ -42,23 +44,24 @@
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="calibrer" class="secondaire">Refaire la calibration (3 coups secs)</button>
+  <button id="calibrer" class="secondaire">Refaire la calibration (2 coups vers le bas, 2 vers le haut)</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <label><input type="checkbox" id="precoce"> Déclenchement précoce (dès le début du geste)</label>
   <div id="diagnostic"></div>
+  <div class="enreg"><button id="enregistrer" class="secondaire">Enregistrer 30 s de jeu (diagnostic)</button> <button id="envoyer" class="secondaire" hidden>Envoyer le fichier au Mac</button> <span id="etatEnreg"></span></div>
   <div id="gain"></div>
 </div>
 
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21i</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21k</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021i"></script>
-<script src="sons.js?v=20261021i"></script>
+<script src="detecteur.js?v=20261021k"></script>
+<script src="sons.js?v=20261021k"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -112,47 +115,94 @@ function lireAxes(e) {
   return null;
 }
 
-// ---- Calibration : l'app apprend sur 3 coups quel axe du capteur bouge et quelle est la force d'un coup ----
-// Les coups reconnus s'affichent un par un ; c'est fini dès le 3e (ou au bout de 10 s s'il y en a au moins 2).
-const DUREE_MAX_CALIBRATION = 10000, COUPS_CALIBRATION = 3;
+// ---- Calibration guidée : 2 coups vers le BAS, puis 2 vers le HAUT, en tenant le téléphone comme pour jouer ----
+// Comme l'app sait dans quel sens va chaque coup, elle trouve sans deviner quel axe du téléphone sert de baguette
+// (et dans quel sens), et elle vérifie que les 4 coups sont tous bien classés ; sinon elle recommence.
+const SENS_CALIBRATION = [-1, -1, 1, 1], DUREE_MAX_CALIBRATION = 15000;
+const NOM_AXE = ['en travers du téléphone', 'dans la longueur du téléphone', 'perpendiculaire à l\'écran'];
 let calibration = null;   // { debut, echantillons, coups, fin } pendant la calibration
 function afficherCalibration(titre, detail) {
   const n = calibration ? calibration.coups : 0;
-  const ronds = Array.from({ length: COUPS_CALIBRATION }, (_, i) => (i < n ? '●' : '○')).join(' ');
+  const fleches = SENS_CALIBRATION.map((s, i) => `<span style="opacity:${i < n ? 0.35 : 1}">${s < 0 ? '↓' : '↑'}</span>`).join(' ');
   $('flash').innerHTML = `<div style="font-size:20px;line-height:1.5">${titre}<br><span style="font-size:15px;font-weight:400;color:#bbb">${detail}</span>`
-    + `<div style="font-size:34px;letter-spacing:.2em;margin-top:10px">${ronds}</div></div>`;
+    + `<div style="font-size:34px;letter-spacing:.2em;margin-top:10px">${fleches}</div></div>`;
+}
+function consigne(n) {   // n coups déjà reconnus
+  if (n >= SENS_CALIBRATION.length) return ['4 coups reconnus', 'un instant…'];
+  return [`Coup ${n + 1} sur 4 : vers le ${SENS_CALIBRATION[n] < 0 ? 'BAS ↓' : 'HAUT ↑'}`, 'un coup sec, en tenant le téléphone comme pour jouer'];
 }
 function lancerCalibration(apres = 0) {
   calibration = { debut: performance.now() + apres, echantillons: [], coups: 0, fin: null };
   $('flash').style.background = '#234'; $('flash').style.color = '';
-  if (!apres) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, vers le bas ou vers le haut');
+  if (!apres) afficherCalibration(...consigne(0));
 }
 function suivreCalibration(lu, t, e) {
   if (t < calibration.debut) return;   // pause après un essai raté, le message reste affiché
   const c = calibration;
-  if (!c.echantillons.length) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, vers le bas ou vers le haut');
-  // mesures complètes : la calibration apprend aussi quel axe du téléphone sert de baguette
+  if (!c.echantillons.length) afficherCalibration(...consigne(0));
   c.echantillons.push({ t, axes: lu.axes, rot: e.rotationRate, acc: e.acceleration, accG: e.accelerationIncludingGravity });
   if (c.echantillons.length % 4 === 0) {
-    const n = Math.max(c.coups, Math.min(COUPS_CALIBRATION, Detecteur.compterCoups(c.echantillons)));   // ne recule jamais à l'écran
+    const n = Math.max(c.coups, Detecteur.compterCoups(c.echantillons));   // ne recule jamais à l'écran
     if (n !== c.coups) {
-      c.coups = n;
-      afficherCalibration(n < COUPS_CALIBRATION ? `Coup ${n} reconnu` : '3 coups reconnus', n < COUPS_CALIBRATION ? 'encore ' + (COUPS_CALIBRATION - n) : 'un instant…');
-      if (n >= COUPS_CALIBRATION && !c.fin) c.fin = t + 400;   // laisser finir le dernier geste
+      c.coups = Math.min(n, SENS_CALIBRATION.length);
+      afficherCalibration(...consigne(c.coups));
+      if (n >= SENS_CALIBRATION.length && !c.fin) c.fin = t + 400;   // laisser finir le dernier geste
     }
   }
   if (!(c.fin && t >= c.fin) && t - c.debut < DUREE_MAX_CALIBRATION) return;
   const res = Detecteur.calibrer(c.echantillons);
-  if (!res) {
-    afficherCalibration('Coups pas reconnus', 'frappe plus franchement ; on recommence…');
-    lancerCalibration(2000);
+  const baguette = res && Detecteur.calibrerBaguetteGuidee(c.echantillons, SENS_CALIBRATION);
+  if (!baguette) {
+    afficherCalibration('Pas assez net', '2 coups francs vers le BAS, puis 2 vers le HAUT ; on recommence…');
+    lancerCalibration(2500);
     return;
   }
-  reglages.calibration = { ...res, source: lu.source, baguette: Detecteur.calibrerBaguette(c.echantillons) }; sauver();
-  verticale.regler(reglages.calibration.baguette);
+  reglages.calibration = { ...res, source: lu.source, baguette }; sauver();
+  verticale.regler(baguette);
   calibration = null;
-  $('flash').style.background = ''; $('flash').textContent = 'Calibré ! À toi de jouer';
+  $('flash').style.background = '';
+  $('flash').innerHTML = `<div style="font-size:22px;line-height:1.5">Calibré ! À toi de jouer<br><span style="font-size:14px;font-weight:400;color:#bbb">baguette ${NOM_AXE[baguette.axe.findIndex((x) => x)]}</span></div>`;
 }
+
+// ---- Enregistrement de diagnostic (temporaire) : 30 s de mesures brutes + chaque coup avec ce qui l'a décidé ----
+// À la fin, « Envoyer le fichier au Mac » ouvre le partage de l'iPhone (AirDrop → dossier Téléchargements du Mac).
+const DUREE_ENREG = 30000;
+let enreg = null, fichierEnreg = null;   // enreg : { debut, mesures, coups }
+const tableau = (o, champs) => (o && champs.some((k) => Number.isFinite(o[k])) ? champs.map((k) => Math.round((o[k] || 0) * 1000) / 1000) : null);
+function enregistrer(e, t) {
+  if (!enreg) return;
+  enreg.mesures.push([Math.round(t), tableau(e.rotationRate, ['alpha', 'beta', 'gamma']), tableau(e.acceleration, ['x', 'y', 'z']),
+    tableau(e.accelerationIncludingGravity, ['x', 'y', 'z']), e.interval]);
+  const reste = Math.ceil((DUREE_ENREG - (t - enreg.debut)) / 1000);
+  $('etatEnreg').textContent = reste > 0 ? `Joue normalement… ${reste} s` : '';
+  if (t - enreg.debut >= DUREE_ENREG) terminerEnregistrement();
+}
+function terminerEnregistrement() {
+  const contenu = { app: 'SEB-SOLOGYRO-BATTERIE', date: new Date().toISOString(), appareil: navigator.userAgent, reglages,
+    colonnes: ['t (ms)', 'rotationRate [alpha, beta, gamma] °/s', 'acceleration [x, y, z] m/s²', 'accelerationIncludingGravity [x, y, z] m/s²', 'interval'],
+    coups: enreg.coups, mesures: enreg.mesures };
+  const nom = `sologyro-mesures-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`;
+  fichierEnreg = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
+  $('etatEnreg').textContent = `${enreg.mesures.length} mesures, ${enreg.coups.length} coups`;
+  enreg = null;
+  $('enregistrer').disabled = false; $('envoyer').hidden = false;
+}
+$('enregistrer').onclick = () => {
+  if (!demarre) { $('etatEnreg').textContent = 'Démarre d\'abord (bouton du haut).'; return; }
+  enreg = { debut: performance.now(), mesures: [], coups: [] };
+  $('enregistrer').disabled = true; $('envoyer').hidden = true;
+};
+const telecharger = (f) => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(f), download: f.name }); document.body.append(a); a.click(); a.remove(); };
+$('envoyer').onclick = async () => {
+  if (!fichierEnreg) return;
+  // partage de l'iPhone (AirDrop…) ; s'il est indisponible ou refusé, simple téléchargement
+  if (navigator.canShare && navigator.canShare({ files: [fichierEnreg] })) {
+    try { await navigator.share({ files: [fichierEnreg], title: fichierEnreg.name }); $('etatEnreg').textContent = 'Fichier envoyé'; return; }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+  }
+  telecharger(fichierEnreg);
+  $('etatEnreg').textContent = 'Fichier téléchargé (dossier Téléchargements / Fichiers)';
+};
 
 // ---- Diagnostic de latence : cadence du capteur et retard de la sortie son ----
 const intervalles = [];
@@ -175,6 +225,7 @@ function surMouvement(e) {
   recu = true;
   const t = performance.now();
   verticale.ajouter(t, e.acceleration, e.accelerationIncludingGravity, e.rotationRate);
+  enregistrer(e, t);
   diagnostiquer(t);
   lu.axes.forEach((v, i) => {   // jauges : chaque axe relativement à son maximum
     maxAxes[i] = Math.max(maxAxes[i], Math.abs(v));
@@ -183,14 +234,16 @@ function surMouvement(e) {
   });
   if (calibration) return suivreCalibration(lu, t, e);
   const cal = reglages.calibration;
-  // une calibration d'avant la « baguette » est refaite une fois
-  if (!cal || cal.source !== lu.source || !('baguette' in cal)) return lancerCalibration();
+  // une calibration d'avant la version guidée est refaite une fois
+  if (!cal || cal.source !== lu.source || !(cal.baguette && cal.baguette.guidee)) return lancerCalibration();
 
   const coup = detecteur.traiter(lu.axes[cal.axe] * cal.signe * cal.facteur, t);
   if (coup) {
     // vers le sol → grosse caisse, vers le plafond → cymbale ; sans mesure, sens de rotation
     const s = verticale.sens();
     const gc = s < 0 || (s === 0 && coup.type === 'grosse-caisse');
+    if (enreg) enreg.coups.push({ t: Math.round(t), son: gc ? 'grosse-caisse' : 'cymbale', sens: s, bout: verticale.bout().map((x) => Math.round(x * 1000) / 1000),
+      vitesseVerticale: Math.round(verticale.vitesse() * 1000) / 1000, force: Math.round(coup.force * 100) / 100, pic: Math.round(coup.pic) });
     (gc ? sons.grosseCaisse : sons.cymbale)(coup.force);
     $('flash').textContent = gc ? 'GROSSE CAISSE' : 'CYMBALE';
     $('flash').style.background = gc ? 'var(--gc)' : 'var(--cy)';

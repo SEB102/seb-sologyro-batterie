@@ -92,14 +92,15 @@
     const gestes = []; let g = null, dernierFort = -Infinity;
     echantillons.forEach((e, i) => {
       if (Math.abs(v[i]) < 0.2 * max) return;
-      if (!g || e.t - dernierFort > 150) { g = []; gestes.push(g); }
+      if (!g || e.t - dernierFort > 150) { g = { valeurs: [], indices: [] }; gestes.push(g); }
       dernierFort = e.t;
-      g.push(v[i]);
+      g.valeurs.push(v[i]); g.indices.push(i);
     });
     // Seuil relatif à chaque geste : avec l'accéléromètre, l'arrêt brusque peut dépasser l'élan
-    const vrais = gestes.map((valeurs) => {
+    const vrais = gestes.map(({ valeurs, indices }) => {
       const pic = Math.max(...valeurs.map(Math.abs));
-      return { pic, premierSigne: Math.sign(valeurs.find((x) => Math.abs(x) >= 0.25 * pic)) };
+      return { pic, premierSigne: Math.sign(valeurs.find((x) => Math.abs(x) >= 0.25 * pic)),
+        iPic: indices[valeurs.findIndex((x) => Math.abs(x) === pic)] };   // indice de l'échantillon le plus fort
     }).filter((x) => x.pic >= 0.4 * max);
     return { axe: meilleur.axe, vrais };
   }
@@ -116,8 +117,9 @@
     const { vrais } = g;
     // Le sens du coup = sens du premier mouvement fort de chaque geste (le rebond vient après)
     const somme = vrais.reduce((s, x) => s + x.premierSigne, 0);
-    if (somme === 0) return null;
-    return { axe: g.axe, signe: somme > 0 ? -1 : 1, facteur: CIBLE / mediane(vrais.map((x) => x.pic)), coups: vrais.length };
+    // égalité (calibration guidée : 2 coups vers le bas, 2 vers le haut) : le sens du premier coup tranche
+    const sensMajoritaire = somme !== 0 ? somme : vrais[0].premierSigne;
+    return { axe: g.axe, signe: sensMajoritaire > 0 ? -1 : 1, facteur: CIBLE / mediane(vrais.map((x) => x.pic)), coups: vrais.length };
   }
 
   // Sens du coup DANS LA PIÈCE (vers le sol ou vers le plafond), quelle que soit la tenue du téléphone.
@@ -162,7 +164,7 @@
       return mesures < 2 ? 0 : vitesse > 0 ? 1 : vitesse < 0 ? -1 : 0;
     }
     const regler = (b) => { baguette = b; bout = []; };
-    return { ajouter, sens, regler, vitesse: () => vitesse, gravite: () => g };   // vitesse, gravite : diagnostic
+    return { ajouter, sens, regler, vitesse: () => vitesse, gravite: () => g, bout: () => bout.slice() };   // vitesse, gravite : diagnostic
   }
 
   const vecteur = (o) => {
@@ -211,6 +213,40 @@
     return { convention: meilleur.convention, axe: meilleur.axe.map((x) => (c > 0 ? x : -x)),
       verticalite: Math.round(meilleur.verticalite * 100) / 100, correlation: Math.round(Math.abs(c) * 100) / 100 };
   }
+  // Calibration guidée : l'utilisateur donne des coups dans des sens connus (sensAttendus : -1 bas, +1 haut, dans
+  // l'ordre). Pour chaque axe candidat, la vitesse du bout au sommet de chaque coup doit avoir le bon signe ;
+  // on garde l'axe le plus « vertical » qui classe TOUS les coups correctement, sinon null (à recommencer).
+  // echantillons : [{ t, axes, rot, acc, accG }]  →  { convention, axe, verticalite, guidee: true } ou null
+  function calibrerBaguetteGuidee(echantillons, sensAttendus) {
+    const g = gestesForts(echantillons);
+    if (!g || g.vrais.length !== sensAttendus.length) return null;
+    const v = creerVerticale(), gravite = [];
+    for (const e of echantillons) { v.ajouter(e.t, e.acc, e.accG); const x = v.gravite(); gravite.push(x && x.map((c) => c / Math.hypot(x[0], x[1], x[2]))); }
+    let meilleur = null;
+    for (const convention of ['navigateurs', 'norme']) for (let i = 0; i < 3; i++) {
+      const axe = [0, 0, 0]; axe[i] = 1;
+      // au sommet de chaque coup : 3 échantillons autour du pic de rotation
+      const coups = g.vrais.map(({ iPic }) => {
+        let p = 0, w = 0;
+        for (let j = Math.max(0, iPic - 1); j <= Math.min(echantillons.length - 1, iPic + 1); j++) {
+          const r = rotationEnRad(echantillons[j].rot, convention);
+          if (!r || !gravite[j]) continue;
+          p += produitMixte(r, axe, gravite[j]); w += Math.hypot(r[0], r[1], r[2]);
+        }
+        return { p, w };
+      });
+      const total = coups.reduce((a, c) => a + Math.abs(c.p), 0), poids = coups.reduce((a, c) => a + c.w, 0);
+      if (!total || !poids) continue;
+      const accord = coups.reduce((a, c, k) => a + sensAttendus[k] * c.p, 0) / total;   // +1 : tous dans le bon sens
+      const signe = accord >= 0 ? 1 : -1, verticalite = total / poids;
+      const tousJustes = coups.every((c, k) => sensAttendus[k] * c.p * signe > 0);
+      if (tousJustes && verticalite >= 0.3 && (!meilleur || verticalite > meilleur.verticalite)) {
+        meilleur = { convention, axe: axe.map((x) => x * signe), verticalite: Math.round(verticalite * 100) / 100, guidee: true };
+      }
+    }
+    return meilleur;
+  }
+
   function correlation(x, y) {
     const mx = x.reduce((a, b) => a + b, 0) / x.length, my = y.reduce((a, b) => a + b, 0) / y.length;
     let sxy = 0, sxx = 0, syy = 0;
@@ -223,7 +259,7 @@
   const seuilVersSensibilite = (s) => Math.round((SEUIL_MAX - s) / (SEUIL_MAX - SEUIL_MIN) * 100);
   const sensibiliteVersSeuil = (p) => Math.round(SEUIL_MAX - Math.min(100, Math.max(0, p)) / 100 * (SEUIL_MAX - SEUIL_MIN));
 
-  const api = { creerDetecteur, calibrer, compterCoups, creerVerticale, calibrerBaguette, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
+  const api = { creerDetecteur, calibrer, compterCoups, creerVerticale, calibrerBaguette, calibrerBaguetteGuidee, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else racine.Detecteur = api;
 })(this);

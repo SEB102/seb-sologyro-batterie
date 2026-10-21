@@ -9,11 +9,12 @@ Version « solo » de [SEB-GYROBATTERIE](https://github.com/SEB102/seb-gyrobatte
 Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-sologyro-batterie/**.
 
 1. **Toucher pour démarrer** : un seul toucher active le son et les mouvements (iPhone : autoriser « Mouvement »).
-2. La première fois : **donner 3 coups secs**, comme avec une baguette, dans n'importe quel sens (calibration). Chaque coup reconnu s'affiche (● ○ ○), et c'est fini dès le 3e (la page apprend quel axe du capteur bouge et la force d'un coup normal).
+2. La première fois : **calibration guidée** : l'écran demande **2 coups secs vers le BAS, puis 2 vers le HAUT** (↓ ↓ ↑ ↑), en tenant le téléphone comme pour jouer. Comme l'app connaît le sens de chaque coup, elle trouve sans deviner quel axe du téléphone sert de baguette ; elle affiche ce qu'elle a compris (« baguette en travers du téléphone »…) et recommence si les 4 coups ne sont pas tous nets.
 3. Jouer. Ajouter la page à l'écran d'accueil pour l'avoir en un toucher (iPhone : Partager → « Sur l'écran d'accueil » ; Android : ⋮ → « Ajouter à l'écran d'accueil »).
 
 - **Sensibilité** (0 à 100 %) : 100 % = le geste le plus léger suffit.
-- **Refaire la calibration** si on change de prise en main.
+- **Refaire la calibration** si on change franchement de prise en main (de petites variations ne gênent pas : testé jusqu'à 60° de rotation du téléphone dans la main et ±30° d'inclinaison).
+- **Enregistrer 30 s de jeu (diagnostic)** : fonction temporaire pour comprendre une dérive. À la fin, « Envoyer le fichier au Mac » ouvre le partage de l'iPhone (AirDrop → dossier Téléchargements du Mac).
 - iPhone : le son joue même bouton latéral sur silencieux (iOS 17 et plus) ; sur les versions plus anciennes, désactiver le mode silencieux.
 
 ## Diagnostic de latence
@@ -49,4 +50,4 @@ SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENS
 
 - `index.html` : la page du téléphone (capteur, calibration, détection, son, diagnostic)
 - `detecteur.js` : détection des coups, calibration, sens 3D, sensibilité · `sons.js` : grosse caisse et cymbale synthétisées
-- `test.js` : `node test.js` (42 tests : détection, déclenchement précoce, sens 3D et baguette (dont vraies mesures d'iPhone), calibration dans 5 configurations de capteur, sons)
+- `test.js` : `node test.js` (46 tests : détection, déclenchement précoce, sens 3D et baguette, calibration guidée (dont vraies mesures d'iPhone), calibration dans 5 configurations de capteur, sons)
