@@ -247,6 +247,17 @@
     return meilleur;
   }
 
+  // Sens de rotation du poignet qui veut dire « vers le bas », appris à la calibration guidée.
+  // cal : résultat de calibrer (axe et signe de détection). Renvoie m (+1 / -1) tel que, pour un coup détecté,
+  // sens = (type === 'grosse-caisse' ? -1 : 1) × m ; null si les coups ne suivent pas tous la consigne.
+  function calibrerSensRotation(echantillons, cal, sensAttendus) {
+    const g = gestesForts(echantillons);
+    if (!g || !cal || g.vrais.length !== sensAttendus.length) return null;
+    const rotations = g.vrais.map(({ iPic }) => Math.sign(echantillons[iPic].axes[cal.axe] * cal.signe));
+    const m = sensAttendus[0] * rotations[0];
+    return m && rotations.every((r, k) => r * m === sensAttendus[k]) ? m : null;
+  }
+
   function correlation(x, y) {
     const mx = x.reduce((a, b) => a + b, 0) / x.length, my = y.reduce((a, b) => a + b, 0) / y.length;
     let sxy = 0, sxx = 0, syy = 0;
@@ -259,7 +270,7 @@
   const seuilVersSensibilite = (s) => Math.round((SEUIL_MAX - s) / (SEUIL_MAX - SEUIL_MIN) * 100);
   const sensibiliteVersSeuil = (p) => Math.round(SEUIL_MAX - Math.min(100, Math.max(0, p)) / 100 * (SEUIL_MAX - SEUIL_MIN));
 
-  const api = { creerDetecteur, calibrer, compterCoups, creerVerticale, calibrerBaguette, calibrerBaguetteGuidee, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
+  const api = { creerDetecteur, calibrer, compterCoups, creerVerticale, calibrerBaguette, calibrerBaguetteGuidee, calibrerSensRotation, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else racine.Detecteur = api;
 })(this);

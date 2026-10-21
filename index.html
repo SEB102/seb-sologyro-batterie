@@ -53,21 +53,19 @@
 </div>
 
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21k</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21l</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021k"></script>
-<script src="sons.js?v=20261021k"></script>
+<script src="detecteur.js?v=20261021l"></script>
+<script src="sons.js?v=20261021l"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
 const reglages = { seuil: memo.seuil || 250, calibration: memo.calibration || null, precoce: !!memo.precoce };
-const verticale = Detecteur.creerVerticale();   // sens du coup dans la pièce : vers le sol ou vers le plafond
-if (reglages.calibration) verticale.regler(reglages.calibration.baguette || null);   // axe « baguette » appris à la calibration
 const sauver = () => { try { localStorage.setItem('gyro-batterie', JSON.stringify(reglages)); } catch {} };
 
 // ---- Son, joué par le téléphone lui-même ----
@@ -116,10 +114,9 @@ function lireAxes(e) {
 }
 
 // ---- Calibration guidée : 2 coups vers le BAS, puis 2 vers le HAUT, en tenant le téléphone comme pour jouer ----
-// Comme l'app sait dans quel sens va chaque coup, elle trouve sans deviner quel axe du téléphone sert de baguette
+// Comme l'app sait dans quel sens va chaque coup, elle apprend quel sens de rotation du poignet veut dire « bas »
 // (et dans quel sens), et elle vérifie que les 4 coups sont tous bien classés ; sinon elle recommence.
 const SENS_CALIBRATION = [-1, -1, 1, 1], DUREE_MAX_CALIBRATION = 15000;
-const NOM_AXE = ['en travers du téléphone', 'dans la longueur du téléphone', 'perpendiculaire à l\'écran'];
 let calibration = null;   // { debut, echantillons, coups, fin } pendant la calibration
 function afficherCalibration(titre, detail) {
   const n = calibration ? calibration.coups : 0;
@@ -151,17 +148,16 @@ function suivreCalibration(lu, t, e) {
   }
   if (!(c.fin && t >= c.fin) && t - c.debut < DUREE_MAX_CALIBRATION) return;
   const res = Detecteur.calibrer(c.echantillons);
-  const baguette = res && Detecteur.calibrerBaguetteGuidee(c.echantillons, SENS_CALIBRATION);
-  if (!baguette) {
+  const sensRotation = res && Detecteur.calibrerSensRotation(c.echantillons, res, SENS_CALIBRATION);
+  if (!sensRotation) {
     afficherCalibration('Pas assez net', '2 coups francs vers le BAS, puis 2 vers le HAUT ; on recommence…');
     lancerCalibration(2500);
     return;
   }
-  reglages.calibration = { ...res, source: lu.source, baguette }; sauver();
-  verticale.regler(baguette);
+  reglages.calibration = { ...res, source: lu.source, sensRotation }; sauver();
   calibration = null;
   $('flash').style.background = '';
-  $('flash').innerHTML = `<div style="font-size:22px;line-height:1.5">Calibré ! À toi de jouer<br><span style="font-size:14px;font-weight:400;color:#bbb">baguette ${NOM_AXE[baguette.axe.findIndex((x) => x)]}</span></div>`;
+  $('flash').textContent = 'Calibré ! À toi de jouer';
 }
 
 // ---- Enregistrement de diagnostic (temporaire) : 30 s de mesures brutes + chaque coup avec ce qui l'a décidé ----
@@ -224,7 +220,6 @@ function surMouvement(e) {
   const lu = lireAxes(e); if (!lu) return;
   recu = true;
   const t = performance.now();
-  verticale.ajouter(t, e.acceleration, e.accelerationIncludingGravity, e.rotationRate);
   enregistrer(e, t);
   diagnostiquer(t);
   lu.axes.forEach((v, i) => {   // jauges : chaque axe relativement à son maximum
@@ -234,16 +229,15 @@ function surMouvement(e) {
   });
   if (calibration) return suivreCalibration(lu, t, e);
   const cal = reglages.calibration;
-  // une calibration d'avant la version guidée est refaite une fois
-  if (!cal || cal.source !== lu.source || !(cal.baguette && cal.baguette.guidee)) return lancerCalibration();
+  // une calibration d'avant la version guidée (sans sens de rotation appris) est refaite une fois
+  if (!cal || cal.source !== lu.source || !cal.sensRotation) return lancerCalibration();
 
   const coup = detecteur.traiter(lu.axes[cal.axe] * cal.signe * cal.facteur, t);
   if (coup) {
-    // vers le sol → grosse caisse, vers le plafond → cymbale ; sans mesure, sens de rotation
-    const s = verticale.sens();
-    const gc = s < 0 || (s === 0 && coup.type === 'grosse-caisse');
-    if (enreg) enreg.coups.push({ t: Math.round(t), son: gc ? 'grosse-caisse' : 'cymbale', sens: s, bout: verticale.bout().map((x) => Math.round(x * 1000) / 1000),
-      vitesseVerticale: Math.round(verticale.vitesse() * 1000) / 1000, force: Math.round(coup.force * 100) / 100, pic: Math.round(coup.pic) });
+    // coup vers le bas → grosse caisse, vers le haut → cymbale : le sens de rotation du poignet, appris à la calibration
+    const s = (coup.type === 'grosse-caisse' ? -1 : 1) * cal.sensRotation;
+    const gc = s < 0;
+    if (enreg) enreg.coups.push({ t: Math.round(t), son: gc ? 'grosse-caisse' : 'cymbale', sens: s, force: Math.round(coup.force * 100) / 100, pic: Math.round(coup.pic) });
     (gc ? sons.grosseCaisse : sons.cymbale)(coup.force);
     $('flash').textContent = gc ? 'GROSSE CAISSE' : 'CYMBALE';
     $('flash').style.background = gc ? 'var(--gc)' : 'var(--cy)';
