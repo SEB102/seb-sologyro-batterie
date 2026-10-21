@@ -26,6 +26,14 @@
   label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--doux); }
   input[type=range] { flex: 1; }
   .reglages { display: flex; flex-direction: column; gap: 10px; }
+  .gestes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: var(--doux); }
+  .gestes div { background: #1c1c1c; border-radius: 10px; padding: 8px 10px; border-left: 5px solid var(--c); }
+  .gestes b { color: var(--texte); display: block; font-size: 14px; }
+  #precision { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+  #precision[hidden] { display: none; }
+  .choix { display: flex; gap: 6px; flex-wrap: wrap; }
+  .choix button { flex: 1; font-size: 14px; padding: 10px 6px; background: #2a2a2a; color: var(--texte); line-height: 1.3; }
+  .choix button.actif { background: #2a6; color: #fff; }
   /* Écran noir verrouillé : rien d'autre que du noir (presque aucune consommation sur un écran OLED), touchers ignorés */
   #ecranNoir { position: fixed; inset: 0; z-index: 50; background: #000; touch-action: none; display: flex; align-items: flex-end;
                justify-content: center; padding-bottom: 48px; -webkit-touch-callout: none; }
@@ -41,16 +49,26 @@
 </head>
 <body>
 <h1>SEB-SOLOGYRO-BATTERIE</h1>
-<div id="etat">Le téléphone joue lui-même : coup vers le sol → grosse caisse, coup vers le plafond → cymbale.</div>
+<div id="etat">Le téléphone apprend tes 4 gestes, puis joue lui-même le son de chacun.</div>
+<div class="gestes">
+  <div style="--c:#e8643c"><b>↓ coup vers le bas</b>grosse caisse</div>
+  <div style="--c:#e8c43c"><b>↑ coup vers le haut</b>cymbale</div>
+  <div style="--c:#4c9be8"><b>→ coup vers la droite</b>caisse claire</div>
+  <div style="--c:#b46be8"><b>← coup vers la gauche</b>« Oh ! »</div>
+</div>
 <button id="demarrer">Toucher pour démarrer</button>
 <div id="flash">—</div>
+<div id="precision" hidden>
+  <div>Attente avant de jouer (plus elle est longue, mieux les gestes sont reconnus) :</div>
+  <div class="choix" id="attentes"></div>
+</div>
 <div class="jauges">
   <span>1</span><div class="jauge"><i id="j0"></i></div>
   <span>2</span><div class="jauge"><i id="j1"></i></div>
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="calibrer" class="secondaire">Refaire la calibration (2 coups vers le haut, 2 vers le bas)</button>
+  <button id="apprendre" class="secondaire">Réapprendre mes gestes (10 coups de chacun)</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
 </div>
@@ -58,22 +76,24 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21r</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21s</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021r"></script>
-<script src="sons.js?v=20261021r"></script>
+<script src="detecteur.js?v=20261021s"></script>
+<script src="sons.js?v=20261021s"></script>
+<script src="gestes.js?v=20261021s"></script>
+<script src="apprentissage.js?v=20261021s"></script>
+<script src="jeu-gestes.js?v=20261021s"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
 // sensibilité par défaut : 80 % (remise une fois à 80 % pour tous, puis réglable comme avant)
 const SEUIL_DEFAUT = Detecteur.sensibiliteVersSeuil(80);
-const reglages = { seuil: memo.defaut80 ? memo.seuil : SEUIL_DEFAUT, defaut80: true, calibration: memo.calibration || null,
-  precoce: true };   // déclenchement précoce imposé : le coup part dès le début du geste (plus réactif), non modifiable
+const reglages = { ...memo, seuil: memo.defaut80 ? memo.seuil : SEUIL_DEFAUT, defaut80: true };
 const sauver = () => { try { localStorage.setItem('gyro-batterie', JSON.stringify(reglages)); } catch {} };
 
 // ---- Son, joué par le téléphone lui-même ----
@@ -82,114 +102,46 @@ try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } ca
 const ctx = new AudioContext({ latencyHint: 'interactive' });
 const sons = creerSons(ctx);
 
+// Bips de l'apprentissage (on joue sans regarder l'écran) : 1 bip l'écoute commence · 2 bips geste enregistré · 3 bips montants terminé
+function bip(frequence = 880, debut = 0, duree = 0.09) {
+  if (ctx.state !== 'running') reactiverSon();
+  const t = ctx.currentTime + debut, o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = frequence;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + duree + 0.02);
+}
+const BIPS = { debut: () => bip(880), gesteFini: () => { bip(660, 0); bip(660, 0.16); }, fin: () => { bip(523, 0); bip(659, 0.15); bip(784, 0.3, 0.18); } };
+
+// ---- Gestes : apprentissage guidé puis jeu (jeu-gestes.js, commun aux trois apps) ----
+const jeu = JeuGestes.creerJeu({
+  $, seuil: reglages.seuil, biper: (type) => BIPS[type](),
+  sonner(geste, force) { if (ctx.state !== 'running') reactiverSon(); sons.instruments[geste.son](force); },   // au cas où l'iPhone l'aurait coupé
+});
+
 // ---- Sensibilité (curseur à droite = gestes plus légers) ----
-let detecteur;
 function appliquerSeuil(seuil) {
   reglages.seuil = seuil; sauver();
-  detecteur = Detecteur.creerDetecteur({ seuil, precoce: reglages.precoce });
+  jeu.changerSeuil(seuil);
   const p = Detecteur.seuilVersSensibilite(seuil);
   $('seuil').value = p; $('vseuil').textContent = p + ' %';
 }
 appliquerSeuil(reglages.seuil);
 $('seuil').oninput = (e) => appliquerSeuil(Detecteur.sensibiliteVersSeuil(Number(e.target.value)));
 
-// ---- Lecture du capteur, quel que soit le téléphone ----
-// Gyroscope si présent ; sinon accéléromètre (sans gravité, ou avec gravité retirée par un filtre).
-let gravite = null;
-function lireAxes(e) {
-  const r = e.rotationRate;
-  if (r && [r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return { source: 'gyro', axes: [r.alpha || 0, r.beta || 0, r.gamma || 0] };
-  const a = e.acceleration;
-  if (a && typeof a.x === 'number') return { source: 'accel', axes: [a.x, a.y || 0, a.z || 0] };
-  const g = e.accelerationIncludingGravity;
-  if (g && typeof g.x === 'number') {
-    const brut = [g.x, g.y || 0, g.z || 0];
-    gravite = gravite ? gravite.map((v, i) => 0.9 * v + 0.1 * brut[i]) : brut;
-    return { source: 'accelg', axes: brut.map((v, i) => v - gravite[i]) };
-  }
-  return null;
-}
-
-// ---- Calibration guidée : 2 coups vers le BAS, puis 2 vers le HAUT, en tenant le téléphone comme pour jouer ----
-// Comme l'app sait dans quel sens va chaque coup, elle apprend quel sens de rotation du poignet veut dire « bas »
-// (et dans quel sens), et elle vérifie que les 4 coups sont tous bien classés ; sinon elle recommence.
-// d'abord vers le HAUT : le premier mouvement (retourner le téléphone après avoir touché l'écran) faussait un premier coup vers le bas
-const SENS_CALIBRATION = [1, 1, -1, -1], DUREE_MAX_CALIBRATION = 15000, PREPARATION = 1500;
-let calibration = null;   // { debut, echantillons, coups, fin } pendant la calibration
-function afficherCalibration(titre, detail) {
-  const n = calibration ? calibration.coups : 0;
-  const fleches = SENS_CALIBRATION.map((s, i) => `<span style="opacity:${i < n ? 0.35 : 1}">${s < 0 ? '↓' : '↑'}</span>`).join(' ');
-  $('flash').innerHTML = `<div style="font-size:20px;line-height:1.5">${titre}<br><span style="font-size:15px;font-weight:400;color:#bbb">${detail}</span>`
-    + `<div style="font-size:34px;letter-spacing:.2em;margin-top:10px">${fleches}</div></div>`;
-}
-function consigne(n) {   // n coups déjà reconnus
-  if (n >= SENS_CALIBRATION.length) return ['4 coups reconnus', 'un instant…'];
-  return [`Coup ${n + 1} sur 4 : vers le ${SENS_CALIBRATION[n] < 0 ? 'BAS ↓' : 'HAUT ↑'}`, 'un coup sec, en tenant le téléphone comme pour jouer'];
-}
-// apres : délai avant d'écouter (le temps de prendre le téléphone en main) ; preparer : afficher « Prépare-toi »
-function lancerCalibration(apres = PREPARATION, preparer = true) {
-  calibration = { debut: performance.now() + apres, echantillons: [], coups: 0, fin: null };
-  $('flash').style.background = '#234'; $('flash').style.color = '';
-  if (preparer) afficherCalibration('Prépare-toi…', 'tiens le téléphone comme pour jouer : la calibration commence dans un instant');
-}
-function suivreCalibration(lu, t, e) {
-  if (t < calibration.debut) return;   // pause après un essai raté, le message reste affiché
-  const c = calibration;
-  if (!c.echantillons.length) afficherCalibration(...consigne(0));
-  c.echantillons.push({ t, axes: lu.axes, rot: e.rotationRate, acc: e.acceleration, accG: e.accelerationIncludingGravity });
-  if (c.echantillons.length % 4 === 0) {
-    const n = Math.max(c.coups, Detecteur.compterCoups(c.echantillons));   // ne recule jamais à l'écran
-    if (n !== c.coups) {
-      c.coups = Math.min(n, SENS_CALIBRATION.length);
-      afficherCalibration(...consigne(c.coups));
-      if (n >= SENS_CALIBRATION.length && !c.fin) c.fin = t + 400;   // laisser finir le dernier geste
-    }
-  }
-  if (!(c.fin && t >= c.fin) && t - c.debut < DUREE_MAX_CALIBRATION) return;
-  const res = Detecteur.calibrer(c.echantillons);
-  const sensRotation = res && Detecteur.calibrerSensRotation(c.echantillons, res, SENS_CALIBRATION);
-  if (!sensRotation) {
-    afficherCalibration('Pas assez net', '2 coups francs vers le HAUT, puis 2 vers le BAS ; on recommence…');
-    lancerCalibration(2500, false);
-    return;
-  }
-  reglages.calibration = { ...res, source: lu.source, sensRotation }; sauver();
-  calibration = null;
-  $('flash').style.background = '';
-  $('flash').textContent = 'Calibré ! À toi de jouer';
-}
-
-// ---- Jeu ----
-let timerFlash, maxAxes = [1, 1, 1], recu = false;
+// ---- Capteur ----
+let maxAxes = [1, 1, 1], recu = false, evenements = 0;
 function surMouvement(e) {
-  const lu = lireAxes(e); if (!lu) return;
+  evenements++;
+  if (jeu.surMouvement(e) === null) return;   // pas de gyroscope : les gestes ne peuvent pas être reconnus
   recu = true;
-  const t = performance.now();
-  lu.axes.forEach((v, i) => {   // jauges : chaque axe relativement à son maximum
+  const r = e.rotationRate;
+  [r.alpha || 0, r.beta || 0, r.gamma || 0].forEach((v, i) => {   // jauges : chaque axe de rotation relativement à son maximum
     maxAxes[i] = Math.max(maxAxes[i], Math.abs(v));
     const n = v / maxAxes[i], el = $('j' + i);
     el.style.left = (n < 0 ? 50 + n * 50 : 50) + '%'; el.style.width = Math.abs(n) * 50 + '%';
   });
-  if (calibration) return suivreCalibration(lu, t, e);
-  const cal = reglages.calibration;
-  // une calibration d'avant la version guidée (sans sens de rotation appris) est refaite une fois
-  if (!cal || cal.source !== lu.source || !cal.sensRotation) return lancerCalibration();
-
-  const coup = detecteur.traiter(lu.axes[cal.axe] * cal.signe * cal.facteur, t);
-  if (coup) {
-    // coup vers le bas → grosse caisse, vers le haut → cymbale : le sens de rotation du poignet, appris à la calibration
-    const s = (coup.type === 'grosse-caisse' ? -1 : 1) * cal.sensRotation;
-    const gc = s < 0;
-    if (ctx.state !== 'running') reactiverSon();   // au cas où l'iPhone l'aurait coupé entre-temps
-    (gc ? sons.grosseCaisse : sons.cymbale)(coup.force);
-    $('flash').textContent = gc ? 'GROSSE CAISSE' : 'CYMBALE';
-    $('flash').style.background = gc ? 'var(--gc)' : 'var(--cy)';
-    $('flash').style.color = '#111';
-    clearTimeout(timerFlash);
-    timerFlash = setTimeout(() => { $('flash').style.background = ''; $('flash').style.color = ''; }, 150);
-  }
 }
-$('calibrer').onclick = () => lancerCalibration();
+$('apprendre').onclick = () => { if (!demarre) return message('Démarre d\'abord (bouton du haut)'); jeu.apprendre(); };
 
 // ---- Démarrage : un seul toucher débloque le son ET les mouvements ----
 const auPlusTard = (promesse, ms, valeur) => Promise.race([promesse, new Promise((r) => setTimeout(() => r(valeur), ms))]);
@@ -214,8 +166,8 @@ async function demarrer() {
   garderEcranAllume();
   reactiverSon(); verifierSon();   // le dialogue d'autorisation a pu interrompre le son
   $('demarrer').style.display = 'none';
-  $('flash').textContent = reglages.calibration ? 'Frappe !' : '…';
-  setTimeout(() => { if (!recu) message('Aucun mouvement reçu du capteur'); }, 2500);
+  jeu.commencer();
+  setTimeout(() => { if (!recu) message(evenements ? 'Ce téléphone n\'a pas de gyroscope : les gestes ne peuvent pas être reconnus' : 'Aucun mouvement reçu du capteur'); }, 2500);
 }
 $('demarrer').onclick = demarrer;
 

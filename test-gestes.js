@@ -21,7 +21,8 @@ const TYPES = {
 };
 // rebond : vitesse du retour du poignet juste après le coup, en fraction de la vitesse du coup (0 = petit retour lent).
 // Mesuré sur un vrai iPhone (21/10) : 17 à 50 % de la vitesse du coup, 70 à 230 ms après.
-function seance(sequence, { hz = 60, calme = 900, rebond = 0 } = {}) {
+// retour : le poignet revient de tout l'angle du coup, à cette fraction de la vitesse du coup (0 = petit retour lent)
+function seance(sequence, { hz = 60, calme = 900, rebond = 0, retour = 0 } = {}) {
   const dt = 1000 / hz, ech = [], vrais = [];
   let t = 0;
   for (const nom of sequence) {
@@ -32,12 +33,15 @@ function seance(sequence, { hz = 60, calme = 900, rebond = 0 } = {}) {
     ey = rotation(ex, roulis, ey);
     const ez = [ex[1] * ey[2] - ex[2] * ey[1], ex[2] * ey[0] - ex[0] * ey[2], ex[0] * ey[1] - ex[1] * ey[0]];
     const aller = (u) => (u <= 0 ? 0 : u >= 1 ? amp : amp * (1 - Math.cos(Math.PI * u)) / 2);
-    const angle = rebond
+    const dr = retour && 1 / retour, fin = duree * (1 + (retour ? 0.5 + dr : 0));
+    const angle = retour
+      ? (u) => aller(u) - (u <= 1.5 ? 0 : u >= 1.5 + dr ? amp : amp * (1 - Math.cos(Math.PI * (u - 1.5) / dr)) / 2)
+      : rebond
       ? (u) => { const dr = 0.3 / rebond; return aller(u) - (u <= 1 ? 0 : u >= 1 + dr ? 0.3 * amp : 0.3 * amp * (1 - Math.cos(Math.PI * (u - 1) / dr)) / 2); }   // retour de 30 % du geste
       : (u) => aller(u) - (u > 1.3 ? 0.3 * amp * Math.min(1, (u - 1.3) / 1.5) : 0);   // + petit retour lent
     const pos = (tt) => rotation(T.axe, angle((tt - t - calme / 2) / duree), ex).map((x) => x * 0.25);
     vrais.push({ geste: nom, t: t + calme / 2 });
-    for (let tt = t; tt < t + calme + duree; tt += dt) {
+    for (let tt = t; tt < t + calme + fin; tt += dt) {
       const u = (tt - t - calme / 2) / duree, h = 1;
       const w = (angle((tt + h - t - calme / 2) / duree) - angle((tt - h - t - calme / 2) / duree)) / (2 * h / 1000);   // rad/s
       const base = [ex, ey, ez].map((e) => rotation(T.axe, angle(u), e));
@@ -45,7 +49,7 @@ function seance(sequence, { hz = 60, calme = 900, rebond = 0 } = {}) {
       ech.push({ t: tt, rot: base.map((e) => (w * (T.axe[0] * e[0] + T.axe[1] * e[1] + T.axe[2] * e[2]) * 180 / Math.PI) + entre(-3, 3)),
         acc: base.map((e) => acc[0] * e[0] + acc[1] * e[1] + acc[2] * e[2] + entre(-0.2, 0.2)) });
     }
-    t += calme + duree;
+    t += calme + fin;
   }
   return { ech, vrais };
 }
@@ -120,6 +124,75 @@ test('cas limites : un seul exemple, aucun exemple, mesures absentes', () => {
   const h = G.creerHistorique(); h.ajouter(0, null, null); h.ajouter(16, { alpha: NaN }, { x: 1 });
   assert.strictEqual(G.resumer(h.mesures, 8, 30).length, 36);
   assert.strictEqual(G.evaluer([], 30).precision, 0);
+});
+
+// ---- Apprentissage guidé (apprentissage.js) ----
+const A = require('./apprentissage.js');
+// Joue une séance d'apprentissage simulée comme la page : détection, puis coup transmis après la fenêtre de mesure
+function apprendre(parGesteJoue, { retour = 0, gestes = QUATRE } = {}) {
+  const evenements = [], attentes = [];
+  let horloge = 0;
+  const app = A.creerApprentissage({ gestes: gestes.map((id) => ({ id })), signaler: (e) => evenements.push(e),
+    maintenant: () => horloge, minuterie: (f, ms) => attentes.push([horloge + ms, f]) });
+  const resultats = [];
+  let decalage = 2000;   // la séance commence après la préparation
+  for (const [k, id] of gestes.entries()) {
+    const { ech } = seance(Array(parGesteJoue).fill(id), { retour }), dec = G.creerDeclencheur(), h = G.creerHistorique(), enAttente = [];
+    for (const e of ech) {
+      if (app.etape !== k && !enAttente.length) break;   // on s'arrête aux deux bips, comme en vrai
+      const t = e.t + decalage; horloge = t;
+      for (const [quand, f] of attentes.splice(0)) if (quand <= t) f(); else attentes.push([quand, f]);
+      h.ajouter(t, e.rot, e.acc);
+      if (dec.traiter(e.rot, t) && app.ecoute(t)) enAttente.push({ t, etape: app.etape });
+      for (const c of enAttente.filter((c) => t >= c.t + 220)) {
+        enAttente.splice(enAttente.indexOf(c), 1);
+        resultats.push(app.coup(c.t, c.etape, h.mesures.filter((m) => m.t >= c.t - 100 && m.t <= c.t + 200)));
+      }
+    }
+    decalage += ech[ech.length - 1].t + 1500;
+  }
+  return { evenements, resultats, app };
+}
+
+test('apprentissage : 10 coups par geste avec des retours aussi rapides que le coup → retours ignorés, 40 exemples justes', () => {
+  const { evenements, resultats } = apprendre(12, { retour: 1 });
+  const fin = evenements.find((e) => e.type === 'fin');
+  assert.ok(fin, 'apprentissage non terminé : ' + resultats.join(' '));
+  assert.ok(resultats.includes('retour'), 'aucun retour détecté : le test ne prouve rien');
+  assert.strictEqual(fin.exemples.length, 40);
+  assert.deepStrictEqual(QUATRE.map((g) => fin.exemples.filter((e) => e.geste === g).length), [10, 10, 10, 10]);
+  // chaque exemple tourne dans le sens de son geste : aucun retour appris
+  const sensMoyen = {};
+  for (const e of fin.exemples) { const s = A.sensDuCoup(e.mesures, e.t), n = Math.hypot(...s); sensMoyen[e.geste] = (sensMoyen[e.geste] || [0, 0, 0]).map((x, i) => x + s[i] / n); }
+  for (const e of fin.exemples) assert.ok(A.sensDuCoup(e.mesures, e.t).reduce((a, x, i) => a + x * sensMoyen[e.geste][i], 0) > 0, 'un retour a été appris comme ' + e.geste);
+  assert.ok(fin.precisions.length === 4 && A.ATTENTES.includes(fin.attente));
+});
+
+test('apprentissage : sans retour détecté, chaque coup compte, et les événements arrivent dans l\'ordre', () => {
+  const { evenements, resultats } = apprendre(10);
+  assert.ok(resultats.every((r) => r === 'compte'), resultats.join(' '));
+  const types = evenements.map((e) => e.type + (e.etape !== undefined ? e.etape : ''));
+  assert.deepStrictEqual(types.filter((x) => !x.startsWith('coup')), ['preparation', 'debut0', 'gesteFini0', 'debut1', 'gesteFini1', 'debut2', 'gesteFini2', 'debut3', 'fin']);
+  assert.strictEqual(types.filter((x) => x.startsWith('coup')).length, 4 * 9);
+});
+
+test('apprentissage : un coup qui déborde sur le geste suivant, ou arrivé après la fin, est ignoré', () => {
+  const app = A.creerApprentissage({ gestes: [{ id: 'bas' }, { id: 'haut' }], parGeste: 1, signaler: () => {}, maintenant: () => 0, minuterie: () => {} });
+  const m = (sens) => [0, 20, 40, 60].map((t) => ({ t, rot: [0, sens * 300, 0], acc: [0, 0, 0] }));
+  assert.strictEqual(app.coup(0, 0, m(1)), 'compte');
+  assert.strictEqual(app.coup(0, 0, m(1)), 'deborde');   // détecté pendant le geste 1, arrivé après la fin de celui-ci
+  assert.strictEqual(app.coup(0, 1, m(-1)), 'compte');
+  assert.strictEqual(app.fini, true);
+  assert.strictEqual(app.coup(0, 1, m(-1)), 'deborde');
+});
+
+test('apprentissage : le jeu de 4 gestes appris (retours ignorés) reconnaît droite puis le retour vers la gauche', () => {
+  const { evenements } = apprendre(12, { retour: 1 });
+  const fin = evenements.find((e) => e.type === 'fin');
+  const modele = G.entrainer(fin.exemples.map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, fin.attente) })));
+  const jeu = exemples(['droite', 'gauche', 'droite', 'gauche', 'bas', 'haut', 'bas', 'haut']);
+  const trouves = jeu.map((e) => modele.classer(G.resumer(e.mesures, e.t, fin.attente)));
+  assert.ok(trouves.filter((g, i) => g === jeu[i].geste).length >= 7, trouves.join(' '));
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
