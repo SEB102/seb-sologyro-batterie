@@ -120,10 +120,39 @@
     return { axe: g.axe, signe: somme > 0 ? -1 : 1, facteur: CIBLE / mediane(vrais.map((x) => x.pic)), coups: vrais.length };
   }
 
-  // Les sons alternent, quel que soit le sens du coup : grosse caisse, cymbale, grosse caisse…
-  function creerAlternance() {
-    let n = 0;
-    return () => (n++ % 2 === 0 ? 'grosse-caisse' : 'cymbale');
+  // Sens du coup DANS LA PIÈCE (vers le sol ou vers le plafond), quelle que soit la tenue du téléphone.
+  // On projette l'accélération du téléphone sur la direction de la gravité, puis on l'intègre (avec une fuite,
+  // pour ne pas dériver) : on obtient la vitesse verticale du geste. Le produit scalaire ne change pas si un
+  // navigateur inverse le signe des deux mesures. Sans « acceleration », la gravité est estimée par filtrage.
+  // ajouter(t ms, acceleration, accelerationIncludingGravity) ; sens() : -1 vers le bas, +1 vers le haut, 0 inconnu
+  function creerVerticale({ fuite = 250 } = {}) {
+    const vecteur = (o) => {
+      if (!o) return null;
+      const v = Array.isArray(o) ? o : [o.x, o.y, o.z];
+      if (!Number.isFinite(v[0])) return null;
+      return v.map((x) => (Number.isFinite(x) ? x : 0));
+    };
+    let g = null, vitesse = 0, tPrec = null, mesures = 0;
+    function ajouter(t, acc, accG) {
+      const ag = vecteur(accG); if (!ag) return;
+      const a0 = vecteur(acc);
+      let a;
+      if (a0) {
+        const gi = ag.map((x, i) => x - a0[i]);
+        g = g ? g.map((x, i) => 0.7 * x + 0.3 * gi[i]) : gi;
+        a = a0;
+      } else {
+        g = g ? g.map((x, i) => 0.95 * x + 0.05 * ag[i]) : ag.slice();
+        a = ag.map((x, i) => x - g[i]);
+      }
+      const norme = Math.hypot(g[0], g[1], g[2]); if (!norme) return;
+      const aVerticale = (a[0] * g[0] + a[1] * g[1] + a[2] * g[2]) / norme;   // > 0 : accélère vers le haut
+      const dt = tPrec === null ? 0 : Math.min(100, t - tPrec); tPrec = t;
+      vitesse = vitesse * Math.exp(-dt / fuite) + aVerticale * dt / 1000;
+      mesures++;
+    }
+    const sens = () => (mesures < 2 ? 0 : vitesse > 0 ? 1 : vitesse < 0 ? -1 : 0);
+    return { ajouter, sens };
   }
 
   // Sensibilité affichée en % (100 % = le geste le plus léger suffit) ↔ seuil de déclenchement
@@ -131,7 +160,7 @@
   const seuilVersSensibilite = (s) => Math.round((SEUIL_MAX - s) / (SEUIL_MAX - SEUIL_MIN) * 100);
   const sensibiliteVersSeuil = (p) => Math.round(SEUIL_MAX - Math.min(100, Math.max(0, p)) / 100 * (SEUIL_MAX - SEUIL_MIN));
 
-  const api = { creerDetecteur, calibrer, compterCoups, creerAlternance, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
+  const api = { creerDetecteur, calibrer, compterCoups, creerVerticale, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else racine.Detecteur = api;
 })(this);

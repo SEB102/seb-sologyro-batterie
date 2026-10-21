@@ -185,14 +185,87 @@ test('mode « sommet » (par défaut) inchangé : surGain jamais appelé', () =>
   assert.strictEqual(mesures.length, 0);
 });
 
-// ---- Alternance : chaque coup, dans n'importe quel sens, alterne grosse caisse / cymbale ----
-test('alternance : bas, bas, haut, bas, haut → GC, CY, GC, CY, GC (rebonds non comptés)', () => {
-  const { creerAlternance } = require('./detecteur.js');
-  const prochain = creerAlternance();
-  const sig = signal([[50, zero], [160, coupGyro(-800)], [400, zero], [160, coupGyro(-800)], [400, zero],
-    [160, coupGyro(800)], [400, zero], [160, coupGyro(-600)], [400, zero], [160, coupGyro(900)], [300, zero]]);
-  const sons = passer(sig).map(() => prochain());
-  assert.deepStrictEqual(sons, ['grosse-caisse', 'cymbale', 'grosse-caisse', 'cymbale', 'grosse-caisse']);
+// ---- 3D : le sens du coup DANS LA PIÈCE décide (vers le sol = grosse caisse, vers le plafond = cymbale) ----
+// Simulation : repère de la pièce (z vers le haut) ; le téléphone est tourné de « inclinaison » degrés autour de son
+// axe x (0 = à plat écran en l'air, +80 = pointé vers le haut bras levé, -80 = pointé vers le sol) et tourne encore
+// pendant le geste. Le navigateur fournit acceleration (sans gravité) et accelerationIncludingGravity, dans le repère
+// du téléphone ; au repos, accelerationIncludingGravity vaut +9,81 vers le haut (convention de la norme).
+const { creerVerticale } = require('./detecteur.js');
+function geste3D({ sens = -1, inclinaison = 0, balayage = 35, duree = 160, A = 25, inverse = false, sansLineaire = false, repos = 1000, hz = 60 } = {}) {
+  const ech = [], dt = 1000 / hz;
+  const rad = (d) => d * Math.PI / 180;
+  const versTel = (w, phi) => {   // vecteur de la pièce → repère du téléphone (rotation autour de x)
+    const c = Math.cos(rad(phi)), s = Math.sin(rad(phi));
+    return [w[0], c * w[1] + s * w[2], -s * w[1] + c * w[2]];
+  };
+  const n = Math.round((repos + duree + 300) / dt);
+  for (let i = 0; i < n; i++) {
+    const t = i * dt, u = (t - repos) / duree, dedans = u >= 0 && u <= 1;
+    const a = dedans ? A * Math.sin(2 * Math.PI * u) : 0;                    // élan puis freinage
+    const lin = [0.2 * a, 0.6 * a, sens * a];                                 // vertical + un peu d'arc vers l'avant
+    const phi = inclinaison + (dedans ? balayage * (1 - Math.cos(Math.PI * u)) / 2 : u > 1 ? balayage : 0);
+    const k = inverse ? -1 : 1;
+    const acc = versTel(lin, phi).map((x) => k * x);
+    const accG = versTel([lin[0], lin[1], lin[2] + 9.81], phi).map((x) => k * x);
+    ech.push({ t, u, acc: sansLineaire ? null : acc, accG });
+  }
+  return ech;
+}
+// Sens donné par la verticale à un moment du geste (u = 0,5 : coup « au sommet » ; u = 0,25 : coup précoce)
+function sensA(ech, uVoulu) {
+  const v = creerVerticale();
+  for (const e of ech) { v.ajouter(e.t, e.acc, e.accG); if (e.u >= uVoulu) return v.sens(); }
+  return null;
+}
+
+test('3D : téléphone à plat, coup vers le sol → bas, vers le plafond → haut', () => {
+  assert.strictEqual(sensA(geste3D({ sens: -1 }), 0.5), -1);
+  assert.strictEqual(sensA(geste3D({ sens: +1 }), 0.5), +1);
+});
+
+test('3D : quelle que soit l\'inclinaison du téléphone (pointé vers le sol … bras levé), seul le sens du geste compte', () => {
+  for (const inclinaison of [-80, -45, -10, 0, 30, 60, 80]) for (const sens of [-1, +1]) {
+    assert.strictEqual(sensA(geste3D({ sens, inclinaison }), 0.5), sens, `inclinaison ${inclinaison}°, sens ${sens}`);
+  }
+});
+
+test('3D : bras levé, téléphone pointé vers le haut, coup sec vers le bas → grosse caisse (bas)', () => {
+  assert.strictEqual(sensA(geste3D({ sens: -1, inclinaison: 80, balayage: -40 }), 0.5), -1);
+});
+
+test('3D : convention de signe inversée (certains navigateurs) → même résultat', () => {
+  for (const inclinaison of [-60, 0, 70]) for (const sens of [-1, +1]) {
+    assert.strictEqual(sensA(geste3D({ sens, inclinaison, inverse: true }), 0.5), sens, `inclinaison ${inclinaison}°, sens ${sens}`);
+  }
+});
+
+test('3D : sans « acceleration » (gravité retirée par filtrage), y compris téléphone qui tourne pendant le geste', () => {
+  for (const inclinaison of [-60, 0, 70]) for (const sens of [-1, +1]) {
+    assert.strictEqual(sensA(geste3D({ sens, inclinaison, sansLineaire: true }), 0.5), sens, `inclinaison ${inclinaison}°, sens ${sens}`);
+  }
+});
+
+test('3D : déjà juste au début du geste (déclenchement précoce)', () => {
+  for (const inclinaison of [-60, 0, 70]) for (const sens of [-1, +1]) {
+    assert.strictEqual(sensA(geste3D({ sens, inclinaison }), 0.25), sens, `inclinaison ${inclinaison}°, sens ${sens}`);
+  }
+});
+
+test('3D : pas de mesure → sens 0 (la page garde alors le sens de rotation), valeurs absentes sans planter', () => {
+  const v = creerVerticale();
+  assert.strictEqual(v.sens(), 0);
+  v.ajouter(0, null, null); v.ajouter(16, { x: NaN }, null);
+  assert.strictEqual(v.sens(), 0);
+});
+
+test('3D : deux coups successifs dans des sens opposés sont bien distingués', () => {
+  const v = creerVerticale(), bas = geste3D({ sens: -1, inclinaison: 20 }), haut = geste3D({ sens: +1, inclinaison: 20 });
+  const sensAuMilieu = [];
+  for (const [ech, decal] of [[bas, 0], [haut, 1600]]) {
+    let note = false;
+    for (const e of ech) { v.ajouter(e.t + decal, e.acc, e.accG); if (!note && e.u >= 0.5) { sensAuMilieu.push(v.sens()); note = true; } }
+  }
+  assert.deepStrictEqual(sensAuMilieu, [-1, +1]);
 });
 
 // ---- Comptage des coups pendant la calibration (affiché en direct sur le téléphone) ----
