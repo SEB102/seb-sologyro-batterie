@@ -103,11 +103,46 @@
       for (const fr of [587, 845]) tonal(t, fr, fr, 0.01, 0.6, f, 'square');
     }
 
+    // Voix « wobble » : souffle « h » puis voyelle (filtres de formants), formants qui ondulent
+    // formants : [fréquence, niveau] — « é » ouvert : F2 haut ; « o » fermé : F2 bas
+    function voix(formants) {
+      return (force = 0.7) => {
+        const t = ctx.currentTime, v = volume(force), duree = 0.45;
+        const sortieVoix = ctx.createGain(); sortieVoix.gain.value = 1.2; sortieVoix.connect(sortie);   // niveau mesuré ≈ celui de la grosse caisse
+        const lfo = ctx.createOscillator(); lfo.frequency.value = 7;   // l'ondulation « wobble »
+        const filtres = formants.map(([f, niveau]) => {
+          const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = f / 90;
+          const prof = ctx.createGain(); prof.gain.value = f * 0.15; lfo.connect(prof).connect(bp.frequency);
+          const g = ctx.createGain(); g.gain.value = niveau;
+          bp.connect(g).connect(sortieVoix);
+          return bp;
+        });
+        // « h » : souffle bref dans les mêmes formants
+        const b = ctx.createBufferSource(), gh = ctx.createGain();
+        b.buffer = bruit;
+        gh.gain.setValueAtTime(0.0001, t); gh.gain.exponentialRampToValueAtTime(0.35 * v, t + 0.01);
+        gh.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+        b.connect(gh); filtres.forEach((f) => gh.connect(f));
+        b.start(t); b.stop(t + 0.08);
+        // voyelle : dent de scie qui descend un peu, comme une exclamation
+        const o = ctx.createOscillator(), gv = ctx.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(165, t); o.frequency.exponentialRampToValueAtTime(120, t + duree);
+        gv.gain.setValueAtTime(0.0001, t + 0.03); gv.gain.exponentialRampToValueAtTime(v, t + 0.07);
+        gv.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+        o.connect(gv); filtres.forEach((f) => gv.connect(f));
+        o.start(t); o.stop(t + duree + 0.02);
+        lfo.start(t); lfo.stop(t + duree + 0.02);
+      };
+    }
+
     // Catalogue : nom affiché → fonction(force)
     const instruments = {
       'Grosse caisse': grosseCaisse, 'Caisse claire': caisseClaire, 'Clap': clap,
       'Charleston fermé': charleston(false), 'Charleston ouvert': charleston(true),
       'Tom aigu': tom(220), 'Tom grave': tom(110), 'Cloche': cloche, 'Cymbale': cymbale,
+      'Wobble « Hé » (ouvert)': voix([[400, 1], [2100, 0.6], [2700, 0.3]]),
+      'Wobble « Ho » (fermé)': voix([[400, 1], [780, 0.7], [2800, 0.15]]),
     };
 
     return { grosseCaisse, cymbale, instruments };
