@@ -32,6 +32,10 @@
                justify-content: center; padding-bottom: 48px; -webkit-touch-callout: none; }
   #ecranNoir[hidden] { display: none; }
   #indiceNoir { color: #1c1c1c; font-size: 13px; transition: color .2s; }
+  /* Son coupé par l'iPhone (dialogue système, appel, autre app…) : bandeau bien visible, même sur l'écran noir */
+  #sonCoupe { position: fixed; left: 12px; right: 12px; top: 12px; z-index: 60; background: #b3261e; color: #fff; border-radius: 12px;
+              padding: 14px; font-size: 17px; font-weight: 600; text-align: center; }
+  #sonCoupe[hidden] { display: none; }
   .cartouche { margin-top: 8px; border-top: 1px solid #2a2a2a; text-align: center; color: var(--doux); font-size: 12px; letter-spacing: .12em; line-height: 1.7; padding: 10px 0 0; }
   .cartouche a { color: #a9b6ff; text-decoration: underline; text-underline-offset: 3px; }
 </style>
@@ -55,17 +59,18 @@
   <div id="gain"></div>
 </div>
 
+<div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21n</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21o</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021n"></script>
-<script src="sons.js?v=20261021n"></script>
+<script src="detecteur.js?v=20261021o"></script>
+<script src="sons.js?v=20261021o"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -202,6 +207,7 @@ function surMouvement(e) {
     // coup vers le bas → grosse caisse, vers le haut → cymbale : le sens de rotation du poignet, appris à la calibration
     const s = (coup.type === 'grosse-caisse' ? -1 : 1) * cal.sensRotation;
     const gc = s < 0;
+    if (ctx.state !== 'running') reactiverSon();   // au cas où l'iPhone l'aurait coupé entre-temps
     (gc ? sons.grosseCaisse : sons.cymbale)(coup.force);
     $('flash').textContent = gc ? 'GROSSE CAISSE' : 'CYMBALE';
     $('flash').style.background = gc ? 'var(--gc)' : 'var(--cy)';
@@ -218,7 +224,7 @@ const message = (texte) => { $('flash').textContent = texte; $('flash').style.fo
 let demarre = false;
 async function demarrer() {
   if (demarre) return;
-  ctx.resume();   // dans le geste : sinon le navigateur garde le son coupé
+  reactiverSon();   // dans le geste : sinon le navigateur garde le son coupé
   if (typeof DeviceMotionEvent === 'undefined') return message('Ce navigateur ne donne pas accès aux mouvements');
   if (typeof DeviceMotionEvent.requestPermission === 'function') {
     $('demarrer').textContent = 'Autorisation…';
@@ -233,6 +239,7 @@ async function demarrer() {
   demarre = true;
   window.addEventListener('devicemotion', surMouvement);
   garderEcranAllume();
+  reactiverSon(); verifierSon();   // le dialogue d'autorisation a pu interrompre le son
   $('demarrer').style.display = 'none';
   $('flash').textContent = reglages.calibration ? 'Frappe !' : '…';
   setTimeout(() => { if (!recu) message('Aucun mouvement reçu du capteur'); }, 2500);
@@ -242,7 +249,23 @@ $('demarrer').onclick = demarrer;
 // ---- Écran allumé pendant le jeu : l'iPhone relâche ce verrou dès que la page passe en arrière-plan,
 // on le redemande quand elle revient (sinon l'écran s'éteint et les mesures s'arrêtent) ----
 function garderEcranAllume() { try { navigator.wakeLock.request('screen').catch(() => {}); } catch {} }
-document.addEventListener('visibilitychange', () => { if (!document.hidden && demarre) garderEcranAllume(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && demarre) { garderEcranAllume(); reactiverSon(); } });
+
+// ---- Son toujours actif : l'iPhone met parfois le son en pause (« interrupted ») après un dialogue système,
+// un rechargement ou une interruption, et ne le relance pas tout seul. On le relance à chaque toucher, et un
+// bandeau rouge prévient tant qu'il reste coupé. ----
+function debloquerIOS() {   // un son vide joué pendant un toucher « déverrouille » la sortie audio sur iPhone
+  try { const b = ctx.createBufferSource(); b.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); b.connect(ctx.destination); b.start(0); } catch {}
+}
+function verifierSon() { $('sonCoupe').hidden = !(demarre && ctx.state !== 'running'); }
+function reactiverSon() {
+  if (ctx.state !== 'running') ctx.resume().then(verifierSon, verifierSon);
+  debloquerIOS();
+}
+ctx.onstatechange = verifierSon;
+// en phase de capture : même l'écran noir (qui bloque les touchers) laisse passer la réactivation
+for (const type of ['pointerdown', 'touchend', 'click']) document.addEventListener(type, () => { if (ctx.state !== 'running') reactiverSon(); }, { capture: true, passive: true });
+setInterval(verifierSon, 1000);
 
 // ---- Écran noir verrouillé : on continue de jouer, les touchers sont ignorés ; appui long de 2 s pour revenir ----
 const DUREE_DEVERROUILLAGE = 2000;
