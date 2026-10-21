@@ -84,19 +84,52 @@
   // (mesuré sur iPhone). Pour un mouvement inverse, le seuil est donc relevé à 80 % de la force du coup précédent puis
   // redescend en ~200 ms à partir de la FIN du coup : le rebond ne compte pas, un vrai coup en sens inverse aussi fort passe. Deux coups rapides
   // dans le même sens ne sont pas freinés.
-  function creerDeclencheur({ seuil = 216, rearmement = 80, chute = 1 / 3, pause = 80, rebond = 0.8, oubli = 200 } = {}) {
+  // Retour : chaque coup est un aller-retour. Sur iPhone, le poignet revient de tout l'angle du coup (≈ 130°), souvent
+  // aussi vite que le coup (700 à 1 150 °/s), parfois en deux temps (petit rebond puis retour 300-400 ms après).
+  // Après un coup, tout mouvement en sens inverse est donc le retour et ne sonne pas, tant que le poignet n'est pas
+  // revenu de « part » de l'angle du coup. Ensuite, un coup ne part que si la vitesse remonte (sinon la fin du retour
+  // sonnerait). Si le poignet reste immobile « delai » ms sans revenir, un mouvement en sens inverse redevient un coup.
+  // Un mouvement dans une autre direction (vers la droite après un coup vers le bas) sonne sans attendre.
+  // Le retour s'arrête souvent net et le poignet rebondit dans le sens du coup (≈ 440 °/s après un retour à 1 090 °/s,
+  // mesuré) : la fin du retour arme la même protection anti-rebond que la fin d'un coup.
+  function creerDeclencheur({ seuil = 216, rearmement = 80, chute = 1 / 3, pause = 80, rebond = 0.8, oubli = 200, part = 0.85, delai = 600, remontee = 1.5 } = {}) {
     let arme = true, dernier = -Infinity, finCoup = -Infinity, pic = 0, picPrecedent = 0, sens = null, sensPrecedent = null;
+    let tPrec = null, axe = null, angleCoup = 0, angleRetour = 0, attendRetour = false, creux = 0, picRetour = 0;
     return {
       traiter(rot, t) {
         const r = vecteur(rot, ['alpha', 'beta', 'gamma']), v = Math.hypot(r[0], r[1], r[2]);
+        const dt = tPrec === null ? 0 : Math.min(0.1, Math.max(0, (t - tPrec) / 1000)); tPrec = t;
+        const c = axe ? r[0] * axe[0] + r[1] * axe[1] + r[2] * axe[2] : 0;   // vitesse le long du coup (°/s, < 0 = retour)
+        // angles du coup et du retour, comptés dès le déclenchement : à tempo rapide le retour commence avant la fin du coup
+        if (!arme || attendRetour) {
+          if (angleRetour < 2) angleCoup += Math.max(c, 0) * dt;
+          angleRetour += Math.max(-c, 0) * dt;
+          if (c < -0.5 * v) picRetour = Math.max(picRetour, v);
+        }
+        const retourFini = () => {
+          attendRetour = false; creux = v;
+          if (picRetour > seuil) { finCoup = t; picPrecedent = picRetour; sensPrecedent = axe.map((x) => -x); }
+        };
         if (!arme) {
-          if (v > pic) { pic = v; sens = r; }
-          if (t - dernier >= pause && (v < rearmement || v < pic * chute)) { arme = true; finCoup = t; picPrecedent = pic; sensPrecedent = sens; }
+          if (v > pic && c > 0) { pic = v; sens = r; }
+          if (t - dernier >= pause && (v < rearmement || v < pic * chute)) {
+            arme = true; finCoup = t; picPrecedent = pic; sensPrecedent = sens; attendRetour = true;
+            if (angleRetour >= part * angleCoup) retourFini();
+          }
           return false;
         }
+        if (attendRetour) {
+          if (angleRetour >= part * angleCoup) retourFini();
+          else if (t - finCoup >= delai && v < rearmement) { attendRetour = false; creux = 0; }
+          else if (c < -0.5 * v) return false;
+        }
+        if (creux) creux = Math.min(creux, v);
         const inverse = sensPrecedent && r[0] * sensPrecedent[0] + r[1] * sensPrecedent[1] + r[2] * sensPrecedent[2] < 0;
         const seuilDuMoment = inverse ? Math.max(seuil, rebond * picPrecedent * Math.exp(-(t - finCoup) / oubli)) : seuil;
-        if (v > seuilDuMoment) { arme = false; dernier = t; pic = v; sens = r; return true; }
+        if (v > seuilDuMoment && (!creux || creux < seuil || v > remontee * creux)) {
+          arme = false; dernier = t; pic = v; sens = r; axe = r.map((x) => x / v); angleCoup = 0; angleRetour = 0; attendRetour = false; creux = 0; picRetour = 0;
+          return true;
+        }
         return false;
       },
     };

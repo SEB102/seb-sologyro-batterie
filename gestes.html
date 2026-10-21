@@ -49,15 +49,15 @@
 </div>
 <button id="apprendre" class="secondaire">Réapprendre mes gestes</button>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-c</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-d</div>
 <script>
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="gestes.js?v=gestes-c"></script>
-<script src="detecteur.js?v=gestes-c"></script>
-<script src="sons.js?v=gestes-c"></script>
+<script src="gestes.js?v=gestes-d"></script>
+<script src="detecteur.js?v=gestes-d"></script>
+<script src="sons.js?v=gestes-d"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const GESTES = [
