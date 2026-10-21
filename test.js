@@ -445,6 +445,20 @@ test('rotation : vraies mesures iPhone (1er enregistrement) — le sens de rotat
   for (const t of [19067, 20905, 23083]) assert.strictEqual(son(t), 'grosse-caisse', `coup ${t}`);
 });
 
+test('rotation : calibration dans l\'ordre « 2 vers le haut, puis 2 vers le bas » → mêmes bons sons', () => {
+  const INVERSE = [[1, 0], [1, 10], [-1, 0], [-1, 10]];
+  for (const o of TENUES) {
+    const calibration = avecAxes(poignet({ ...o, coups: INVERSE }));
+    const cal = calibrer(calibration), m = cal && calibrerSensRotation(calibration, cal, INVERSE.map((c) => c[0]));
+    assert.ok(m, `${JSON.stringify(o)} : calibration refusée`);
+    for (const [sens, depart] of DEPARTS) {
+      const det = creerDetecteur({ seuil: 182, precoce: true }), sons = [];
+      for (const e of poignet({ ...o, coups: [[sens, depart]] })) { const c = det.traiter(e.rot[cal.axe] * cal.signe * cal.facteur, e.t); if (c) sons.push((c.type === 'grosse-caisse' ? -1 : 1) * m); }
+      assert.deepStrictEqual(sons, [sens], `${JSON.stringify(o)} sens ${sens} départ ${depart}°`);
+    }
+  }
+});
+
 // ---- Comptage des coups pendant la calibration (affiché en direct sur le téléphone) ----
 test('calibration : les coups reconnus se comptent au fur et à mesure (0, 1, 2, 3)', () => {
   const { compterCoups } = require('./detecteur.js');

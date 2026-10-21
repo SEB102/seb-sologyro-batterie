@@ -51,7 +51,7 @@
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="calibrer" class="secondaire">Refaire la calibration (2 coups vers le bas, 2 vers le haut)</button>
+  <button id="calibrer" class="secondaire">Refaire la calibration (2 coups vers le haut, 2 vers le bas)</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <div id="diagnostic"></div>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
@@ -61,15 +61,15 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21p</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21q</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021p"></script>
-<script src="sons.js?v=20261021p"></script>
+<script src="detecteur.js?v=20261021q"></script>
+<script src="sons.js?v=20261021q"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -126,7 +126,8 @@ function lireAxes(e) {
 // ---- Calibration guidée : 2 coups vers le BAS, puis 2 vers le HAUT, en tenant le téléphone comme pour jouer ----
 // Comme l'app sait dans quel sens va chaque coup, elle apprend quel sens de rotation du poignet veut dire « bas »
 // (et dans quel sens), et elle vérifie que les 4 coups sont tous bien classés ; sinon elle recommence.
-const SENS_CALIBRATION = [-1, -1, 1, 1], DUREE_MAX_CALIBRATION = 15000;
+// d'abord vers le HAUT : le premier mouvement (retourner le téléphone après avoir touché l'écran) faussait un premier coup vers le bas
+const SENS_CALIBRATION = [1, 1, -1, -1], DUREE_MAX_CALIBRATION = 15000, PREPARATION = 1500;
 let calibration = null;   // { debut, echantillons, coups, fin } pendant la calibration
 function afficherCalibration(titre, detail) {
   const n = calibration ? calibration.coups : 0;
@@ -138,10 +139,11 @@ function consigne(n) {   // n coups déjà reconnus
   if (n >= SENS_CALIBRATION.length) return ['4 coups reconnus', 'un instant…'];
   return [`Coup ${n + 1} sur 4 : vers le ${SENS_CALIBRATION[n] < 0 ? 'BAS ↓' : 'HAUT ↑'}`, 'un coup sec, en tenant le téléphone comme pour jouer'];
 }
-function lancerCalibration(apres = 0) {
+// apres : délai avant d'écouter (le temps de prendre le téléphone en main) ; preparer : afficher « Prépare-toi »
+function lancerCalibration(apres = PREPARATION, preparer = true) {
   calibration = { debut: performance.now() + apres, echantillons: [], coups: 0, fin: null };
   $('flash').style.background = '#234'; $('flash').style.color = '';
-  if (!apres) afficherCalibration(...consigne(0));
+  if (preparer) afficherCalibration('Prépare-toi…', 'tiens le téléphone comme pour jouer : la calibration commence dans un instant');
 }
 function suivreCalibration(lu, t, e) {
   if (t < calibration.debut) return;   // pause après un essai raté, le message reste affiché
@@ -160,8 +162,8 @@ function suivreCalibration(lu, t, e) {
   const res = Detecteur.calibrer(c.echantillons);
   const sensRotation = res && Detecteur.calibrerSensRotation(c.echantillons, res, SENS_CALIBRATION);
   if (!sensRotation) {
-    afficherCalibration('Pas assez net', '2 coups francs vers le BAS, puis 2 vers le HAUT ; on recommence…');
-    lancerCalibration(2500);
+    afficherCalibration('Pas assez net', '2 coups francs vers le HAUT, puis 2 vers le BAS ; on recommence…');
+    lancerCalibration(2500, false);
     return;
   }
   reglages.calibration = { ...res, source: lu.source, sensRotation }; sauver();
