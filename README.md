@@ -9,11 +9,11 @@ Version « solo » de [SEB-GYROBATTERIE](https://github.com/SEB102/seb-gyrobatte
 Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-sologyro-batterie/**.
 
 1. **Toucher pour démarrer** : un seul toucher active le son et les mouvements (iPhone : autoriser « Mouvement »).
-2. La première fois : **frapper 3 fois** (calibration : la page apprend l'axe et l'échelle du capteur de ce téléphone).
+2. La première fois : **donner 3 coups secs**, comme avec une baguette, dans n'importe quel sens (calibration). Chaque coup reconnu s'affiche (● ○ ○), et c'est fini dès le 3e (la page apprend quel axe du capteur bouge et la force d'un coup normal).
 3. Jouer. Ajouter la page à l'écran d'accueil pour l'avoir en un toucher (iPhone : Partager → « Sur l'écran d'accueil » ; Android : ⋮ → « Ajouter à l'écran d'accueil »).
 
 - **Sensibilité** (0 à 100 %) : 100 % = le geste le plus léger suffit.
-- **Recalibrer** si on change de prise en main.
+- **Refaire la calibration** si on change de prise en main.
 - iPhone : le son joue même bouton latéral sur silencieux (iOS 17 et plus) ; sur les versions plus anciennes, désactiver le mode silencieux.
 
 ## Diagnostic de latence
@@ -43,4 +43,4 @@ SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENS
 
 - `index.html` : la page du téléphone (capteur, calibration, détection, son, diagnostic)
 - `detecteur.js` : détection des coups, calibration, alternance, sensibilité · `sons.js` : grosse caisse et cymbale synthétisées
-- `test.js` : `node test.js` (25 tests : détection, déclenchement précoce, alternance, calibration dans 5 configurations de capteur, sons)
+- `test.js` : `node test.js` (27 tests : détection, déclenchement précoce, alternance, calibration dans 5 configurations de capteur, sons)

@@ -42,7 +42,7 @@
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="calibrer" class="secondaire">Recalibrer (3 coups)</button>
+  <button id="calibrer" class="secondaire">Refaire la calibration (3 coups secs)</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <label><input type="checkbox" id="precoce"> Déclenchement précoce (dès le début du geste)</label>
   <div id="diagnostic"></div>
@@ -50,15 +50,15 @@
 </div>
 
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21e</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21f</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021e"></script>
-<script src="sons.js?v=20261021e"></script>
+<script src="detecteur.js?v=20261021f"></script>
+<script src="sons.js?v=20261021f"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -111,28 +111,44 @@ function lireAxes(e) {
   return null;
 }
 
-// ---- Calibration : 3 coups ----
-const DUREE_CALIBRATION = 4500;
-let calibration = null;   // { debut, echantillons } pendant la calibration
-function lancerCalibration() {
-  calibration = { debut: performance.now(), echantillons: [] };
+// ---- Calibration : l'app apprend sur 3 coups quel axe du capteur bouge et quelle est la force d'un coup ----
+// Les coups reconnus s'affichent un par un ; c'est fini dès le 3e (ou au bout de 10 s s'il y en a au moins 2).
+const DUREE_MAX_CALIBRATION = 10000, COUPS_CALIBRATION = 3;
+let calibration = null;   // { debut, echantillons, coups, fin } pendant la calibration
+function afficherCalibration(titre, detail) {
+  const n = calibration ? calibration.coups : 0;
+  const ronds = Array.from({ length: COUPS_CALIBRATION }, (_, i) => (i < n ? '●' : '○')).join(' ');
+  $('flash').innerHTML = `<div style="font-size:20px;line-height:1.5">${titre}<br><span style="font-size:15px;font-weight:400;color:#bbb">${detail}</span>`
+    + `<div style="font-size:34px;letter-spacing:.2em;margin-top:10px">${ronds}</div></div>`;
+}
+function lancerCalibration(apres = 0) {
+  calibration = { debut: performance.now() + apres, echantillons: [], coups: 0, fin: null };
   $('flash').style.background = '#234'; $('flash').style.color = '';
+  if (!apres) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, dans n\'importe quel sens');
 }
 function suivreCalibration(lu, t) {
   if (t < calibration.debut) return;   // pause après un essai raté, le message reste affiché
-  calibration.echantillons.push({ t, axes: lu.axes });
-  const reste = Math.ceil((DUREE_CALIBRATION - (t - calibration.debut)) / 1000);
-  $('flash').textContent = `Frappe 3 fois… ${reste}`;
-  if (t - calibration.debut < DUREE_CALIBRATION) return;
-  const res = Detecteur.calibrer(calibration.echantillons);
+  const c = calibration;
+  if (!c.echantillons.length) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, dans n\'importe quel sens');
+  c.echantillons.push({ t, axes: lu.axes });
+  if (c.echantillons.length % 4 === 0) {
+    const n = Math.min(COUPS_CALIBRATION, Detecteur.compterCoups(c.echantillons));
+    if (n !== c.coups) {
+      c.coups = n;
+      afficherCalibration(n < COUPS_CALIBRATION ? `Coup ${n} reconnu` : '3 coups reconnus', n < COUPS_CALIBRATION ? 'encore ' + (COUPS_CALIBRATION - n) : 'un instant…');
+      if (n >= COUPS_CALIBRATION && !c.fin) c.fin = t + 400;   // laisser finir le dernier geste
+    }
+  }
+  if (!(c.fin && t >= c.fin) && t - c.debut < DUREE_MAX_CALIBRATION) return;
+  const res = Detecteur.calibrer(c.echantillons);
   if (!res) {
-    $('flash').textContent = 'Pas compris, on recommence';
-    calibration = { debut: t + 1500, echantillons: [] };
+    afficherCalibration('Coups pas reconnus', 'frappe plus franchement ; on recommence…');
+    lancerCalibration(2000);
     return;
   }
   reglages.calibration = { ...res, source: lu.source }; sauver();
   calibration = null;
-  $('flash').style.background = ''; $('flash').textContent = 'Prêt : frappe !';
+  $('flash').style.background = ''; $('flash').textContent = 'Calibré ! À toi de jouer';
 }
 
 // ---- Diagnostic de latence : cadence du capteur et retard de la sortie son ----
@@ -176,7 +192,7 @@ function surMouvement(e) {
     timerFlash = setTimeout(() => { $('flash').style.background = ''; $('flash').style.color = ''; }, 150);
   }
 }
-$('calibrer').onclick = lancerCalibration;
+$('calibrer').onclick = () => lancerCalibration();
 
 // ---- Démarrage : un seul toucher débloque le son ET les mouvements ----
 const auPlusTard = (promesse, ms, valeur) => Promise.race([promesse, new Promise((r) => setTimeout(() => r(valeur), ms))]);

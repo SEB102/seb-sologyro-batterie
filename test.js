@@ -195,6 +195,27 @@ test('alternance : bas, bas, haut, bas, haut → GC, CY, GC, CY, GC (rebonds non
   assert.deepStrictEqual(sons, ['grosse-caisse', 'cymbale', 'grosse-caisse', 'cymbale', 'grosse-caisse']);
 });
 
+// ---- Comptage des coups pendant la calibration (affiché en direct sur le téléphone) ----
+test('calibration : les coups reconnus se comptent au fur et à mesure (0, 1, 2, 3)', () => {
+  const { compterCoups } = require('./detecteur.js');
+  const ech = seance(coupGyro(-800), { axe: 0, coups: 3 });
+  // coupures : avant le 1er coup, après le 1er, après le 2e, à la fin (séance : 300 ms calme puis coups de 160 ms + 500 ms)
+  const jusqua = (ms) => ech.filter((e) => e.t <= ms);
+  assert.strictEqual(compterCoups(jusqua(250)), 0);
+  assert.strictEqual(compterCoups(jusqua(300 + 160 + 200)), 1);
+  assert.strictEqual(compterCoups(jusqua(300 + 2 * 660)), 2);
+  assert.strictEqual(compterCoups(ech), 3);
+});
+
+test('calibration : comptage juste aussi en rad/s, à l\'accéléromètre seul, et pour des coups faibles', () => {
+  const { compterCoups } = require('./detecteur.js');
+  assert.strictEqual(compterCoups(seance(coupGyro(-800), { axe: 0, echelle: Math.PI / 180 })), 3);
+  assert.strictEqual(compterCoups(seance((u) => (u < 0.5 ? -12 * Math.sin(Math.PI * u / 0.5) : 30 * Math.sin(Math.PI * (u - 0.5) / 0.5)), { axe: 2, bruit: 0.3 })), 3);
+  assert.strictEqual(compterCoups(seance((u) => -350 * Math.sin(Math.PI * u), { axe: 0, coups: 4, bruit: 15 })), 4);
+  assert.strictEqual(compterCoups(seance(zero, { coups: 3 })), 0);
+  assert.strictEqual(compterCoups([]), 0);
+});
+
 // ---- Sons : grosse caisse et cymbale jouées sans erreur (faux Web Audio) ----
 test('sons : grosse caisse et cymbale se jouent sans erreur', () => {
   const noeud = () => new Proxy(function () {}, {

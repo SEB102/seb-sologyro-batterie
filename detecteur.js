@@ -73,9 +73,11 @@
   // echantillons : [{ t, axes: [x, y, z] }]  →  { axe, signe, facteur, coups } ou null
   // Une fois calibré : vitesse = axes[axe] * signe * facteur, négative vers le bas, ~CIBLE pour un coup normal.
   const CIBLE = 700;
-  function calibrer(echantillons) {
+  const mediane = (l) => { const s = [...l].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+
+  // Gestes francs repérés dans les échantillons : { axe, vrais: [{ pic, premierSigne }] } ou null
+  function gestesForts(echantillons) {
     if (echantillons.length < 10) return null;
-    const mediane = (l) => { const s = [...l].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
     let meilleur = null;
     for (let axe = 0; axe < 3; axe++) {
       const v = echantillons.map((e) => e.axes[axe] || 0);
@@ -99,11 +101,23 @@
       const pic = Math.max(...valeurs.map(Math.abs));
       return { pic, premierSigne: Math.sign(valeurs.find((x) => Math.abs(x) >= 0.25 * pic)) };
     }).filter((x) => x.pic >= 0.4 * max);
-    if (vrais.length < 2) return null;
+    return { axe: meilleur.axe, vrais };
+  }
+
+  // Nombre de coups reconnus jusqu'ici (affiché pendant la calibration)
+  function compterCoups(echantillons) {
+    const g = gestesForts(echantillons);
+    return g ? g.vrais.length : 0;
+  }
+
+  function calibrer(echantillons) {
+    const g = gestesForts(echantillons);
+    if (!g || g.vrais.length < 2) return null;
+    const { vrais } = g;
     // Le sens du coup = sens du premier mouvement fort de chaque geste (le rebond vient après)
     const somme = vrais.reduce((s, x) => s + x.premierSigne, 0);
     if (somme === 0) return null;
-    return { axe: meilleur.axe, signe: somme > 0 ? -1 : 1, facteur: CIBLE / mediane(vrais.map((x) => x.pic)), coups: vrais.length };
+    return { axe: g.axe, signe: somme > 0 ? -1 : 1, facteur: CIBLE / mediane(vrais.map((x) => x.pic)), coups: vrais.length };
   }
 
   // Les sons alternent, quel que soit le sens du coup : grosse caisse, cymbale, grosse caisse…
@@ -117,7 +131,7 @@
   const seuilVersSensibilite = (s) => Math.round((SEUIL_MAX - s) / (SEUIL_MAX - SEUIL_MIN) * 100);
   const sensibiliteVersSeuil = (p) => Math.round(SEUIL_MAX - Math.min(100, Math.max(0, p)) / 100 * (SEUIL_MAX - SEUIL_MIN));
 
-  const api = { creerDetecteur, calibrer, creerAlternance, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
+  const api = { creerDetecteur, calibrer, compterCoups, creerAlternance, seuilVersSensibilite, sensibiliteVersSeuil, REGLAGES_DEFAUT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else racine.Detecteur = api;
 })(this);
