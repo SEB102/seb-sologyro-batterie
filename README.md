@@ -40,7 +40,8 @@ Historique : une version précédente déduisait le sens de la gravité et d'un 
 
 **https://seb102.github.io/seb-sologyro-batterie/gestes.html** — le téléphone apprend 3 gestes et joue un son pour chacun : coup **vers le bas** → grosse caisse, **vers le haut** → cymbale, **vers la droite** → caisse claire. L'app principale n'est pas touchée. (Une première version à 4 gestes, avec « sur le côté » et « petit coup sec du poignet », a été abandonnée le 21/10/2026 : ces deux gestes n'étaient pas clairs à faire.)
 
-- **Apprentissage** (~4 min) : 10 coups de chaque geste, guidés à l'écran. Le modèle reste dans le téléphone (bouton « Réapprendre mes gestes »).
+- **Apprentissage** (~4 min) : 10 coups de chaque geste, guidés à l'écran **et au son** (1 bip : l'écoute commence · 2 bips : geste enregistré · 3 bips montants : terminé), pour jouer sans regarder l'écran. Le modèle reste dans le téléphone (bouton « Réapprendre mes gestes »).
+- **Détection des coups rapides** : un coup est fini dès que la rotation retombe sous le tiers de son sommet (pause minimale 80 ms) ; le retour du poignet, en sens inverse et plus faible (17 à 50 % du coup sur un vrai iPhone), ne compte pas. Testé jusqu'à 8 coups/s.
 - **Reconnaissance** : chaque coup est détecté sur la rotation de tous les axes, résumé (forme de la rotation et de l'accélération), puis comparé aux exemples (« plus proches voisins », `gestes.js`, sans bibliothèque).
 - **Attente avant de jouer** : la page affiche la précision obtenue sur tes propres exemples pour 0, 30, 60 et 100 ms, choisit la plus courte qui atteint 95 %, et on peut changer.
 - Mesuré sur des gestes simulés : 98 à 100 % dès 0 ms ; jeu mélangé de 12 coups : 12/12. Tests : `node test-gestes.js`.

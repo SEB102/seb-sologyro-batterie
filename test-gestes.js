@@ -18,7 +18,9 @@ const TYPES = {
   haut: { axe: [0, 1, 0], amp: -50, duree: 140 },        // le bout monte
   droite: { axe: [0, 0, 1], amp: -50, duree: 140 },      // le bout part vers la droite
 };
-function seance(sequence, { hz = 60, calme = 900 } = {}) {
+// rebond : vitesse du retour du poignet juste après le coup, en fraction de la vitesse du coup (0 = petit retour lent).
+// Mesuré sur un vrai iPhone (21/10) : 17 à 50 % de la vitesse du coup, 70 à 230 ms après.
+function seance(sequence, { hz = 60, calme = 900, rebond = 0 } = {}) {
   const dt = 1000 / hz, ech = [], vrais = [];
   let t = 0;
   for (const nom of sequence) {
@@ -28,7 +30,10 @@ function seance(sequence, { hz = 60, calme = 900 } = {}) {
     let ex = rotation([0, 1, 0], -elev, [1, 0, 0]), ey = rotation([0, 1, 0], -elev, [0, 0, 1]);
     ey = rotation(ex, roulis, ey);
     const ez = [ex[1] * ey[2] - ex[2] * ey[1], ex[2] * ey[0] - ex[0] * ey[2], ex[0] * ey[1] - ex[1] * ey[0]];
-    const angle = (u) => (u <= 0 ? 0 : u >= 1 ? amp : amp * (1 - Math.cos(Math.PI * u)) / 2) - (u > 1.3 ? 0.3 * amp * Math.min(1, (u - 1.3) / 1.5) : 0);   // + petit retour lent
+    const aller = (u) => (u <= 0 ? 0 : u >= 1 ? amp : amp * (1 - Math.cos(Math.PI * u)) / 2);
+    const angle = rebond
+      ? (u) => { const dr = 0.3 / rebond; return aller(u) - (u <= 1 ? 0 : u >= 1 + dr ? 0.3 * amp : 0.3 * amp * (1 - Math.cos(Math.PI * (u - 1) / dr)) / 2); }   // retour de 30 % du geste
+      : (u) => aller(u) - (u > 1.3 ? 0.3 * amp * Math.min(1, (u - 1.3) / 1.5) : 0);   // + petit retour lent
     const pos = (tt) => rotation(T.axe, angle((tt - t - calme / 2) / duree), ex).map((x) => x * 0.25);
     vrais.push({ geste: nom, t: t + calme / 2 });
     for (let tt = t; tt < t + calme + duree; tt += dt) {
@@ -60,6 +65,27 @@ test('détection : chaque geste (y compris vers la droite) donne exactement un c
   const ex = exemples(SEQUENCE);
   assert.strictEqual(ex.length, SEQUENCE.length, `${ex.length} coups pour ${SEQUENCE.length} gestes`);
   assert.deepStrictEqual(ex.map((e) => e.geste), SEQUENCE);
+});
+
+test('détection : coups enchaînés vite, jusqu\'à 8 par seconde → tous détectés, sans coup en double', () => {
+  const sauve = Object.fromEntries(Object.entries(TYPES).map(([k, v]) => [k, v.duree]));
+  for (const [tempo, duree] of [[2, 140], [4, 100], [5, 90], [6, 80], [8, 70]]) {
+    for (const k of Object.keys(TYPES)) TYPES[k].duree = duree;
+    const seq = []; for (let k = 0; k < 9; k++) seq.push(['bas', 'haut', 'droite'][k % 3]);
+    const { ech } = seance(seq, { calme: Math.max(0, 1000 / tempo - duree) }), dec = G.creerDeclencheur();
+    let n = 0; for (const e of ech) if (dec.traiter(e.rot, e.t)) n++;
+    assert.strictEqual(n, 9, `${tempo} coups/s : ${n}/9`);
+  }
+  for (const [k, d] of Object.entries(sauve)) TYPES[k].duree = d;
+});
+
+test('détection : le rebond du poignet (jusqu\'à 50 % de la vitesse du coup, comme mesuré sur iPhone) ne compte pas comme un second coup', () => {
+  for (const rebond of [0.3, 0.5]) for (const calme of [900, 250]) {
+    const seq = ['bas', 'haut', 'droite', 'bas', 'haut', 'droite', 'bas', 'haut', 'droite'];
+    const { ech } = seance(seq, { calme, rebond }), dec = G.creerDeclencheur();
+    let n = 0; for (const e of ech) if (dec.traiter(e.rot, e.t)) n++;
+    assert.strictEqual(n, 9, `rebond ${rebond * 100} %, ${calme} ms entre les coups : ${n} coups pour 9`);
+  }
 });
 
 test('reconnaissance : précision selon l\'attente après le déclenchement (15 exemples par geste)', () => {

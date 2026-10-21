@@ -76,16 +76,27 @@
     return { precision: ex.length ? justes / ex.length : 0, parGeste, confusions };
   }
 
-  // Déclenchement sur la vitesse de rotation totale (tous axes) : un coup sur le côté compte autant qu'un coup
-  // vers le bas. Le coup part dès que le seuil est franchi ; il faut ensuite revenir au calme, et 200 ms de pause
-  // empêchent le retour du poignet de compter comme un second coup.
-  function creerDeclencheur({ seuil = 216, rearmement = 80, pause = 200 } = {}) {
-    let arme = true, dernier = -Infinity;
+  // Déclenchement sur la vitesse de rotation totale (tous axes) : un coup vers la droite compte autant qu'un coup
+  // vers le bas. Le coup part dès que le seuil est franchi.
+  // Coups rapides : un coup est fini dès que la rotation retombe sous le tiers de son sommet (le poignet ne s'arrête
+  // jamais quand on joue vite), avec une pause minimale de 80 ms (un coup dont la vitesse fléchit au milieu ne compte pas deux fois ; laisse jusqu'à 8 coups/s).
+  // Rebond : le retour du poignet tourne dans le sens INVERSE du coup, à 17-50 % de sa vitesse, 70 à 230 ms après
+  // (mesuré sur iPhone). Pour un mouvement inverse, le seuil est donc relevé à 80 % de la force du coup précédent puis
+  // redescend en ~200 ms à partir de la FIN du coup : le rebond ne compte pas, un vrai coup en sens inverse aussi fort passe. Deux coups rapides
+  // dans le même sens ne sont pas freinés.
+  function creerDeclencheur({ seuil = 216, rearmement = 80, chute = 1 / 3, pause = 80, rebond = 0.8, oubli = 200 } = {}) {
+    let arme = true, dernier = -Infinity, finCoup = -Infinity, pic = 0, picPrecedent = 0, sens = null, sensPrecedent = null;
     return {
       traiter(rot, t) {
         const r = vecteur(rot, ['alpha', 'beta', 'gamma']), v = Math.hypot(r[0], r[1], r[2]);
-        if (!arme) { if (v < rearmement && t - dernier >= pause) arme = true; return false; }
-        if (v > seuil && t - dernier >= pause) { arme = false; dernier = t; return true; }
+        if (!arme) {
+          if (v > pic) { pic = v; sens = r; }
+          if (t - dernier >= pause && (v < rearmement || v < pic * chute)) { arme = true; finCoup = t; picPrecedent = pic; sensPrecedent = sens; }
+          return false;
+        }
+        const inverse = sensPrecedent && r[0] * sensPrecedent[0] + r[1] * sensPrecedent[1] + r[2] * sensPrecedent[2] < 0;
+        const seuilDuMoment = inverse ? Math.max(seuil, rebond * picPrecedent * Math.exp(-(t - finCoup) / oubli)) : seuil;
+        if (v > seuilDuMoment) { arme = false; dernier = t; pic = v; sens = r; return true; }
         return false;
       },
     };

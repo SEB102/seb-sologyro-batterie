@@ -49,15 +49,15 @@
 </div>
 <button id="apprendre" class="secondaire">Réapprendre mes gestes</button>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-b</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21 gestes-c</div>
 <script>
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="gestes.js?v=gestes-b"></script>
-<script src="detecteur.js?v=gestes-b"></script>
-<script src="sons.js?v=gestes-b"></script>
+<script src="gestes.js?v=gestes-c"></script>
+<script src="detecteur.js?v=gestes-c"></script>
+<script src="sons.js?v=gestes-c"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const GESTES = [
@@ -92,6 +92,19 @@ const force = (mesures, t) => {   // vitesse de rotation maximale autour du coup
 };
 const copie = (t) => historique.mesures.filter((m) => m.t >= t - Gestes.AVANT - 20 && m.t <= t + FENETRE).map((m) => ({ t: Math.round(m.t), rot: m.rot.map((x) => Math.round(x * 10) / 10), acc: m.acc.map((x) => Math.round(x * 100) / 100) }));
 
+// ---- Bips de l'apprentissage (on joue sans regarder l'écran) ----
+// 1 bip : l'écoute commence · 2 bips : geste enregistré · 3 bips montants : apprentissage terminé
+function bip(frequence = 880, debut = 0, duree = 0.09) {
+  if (ctx.state !== 'running') reactiverSon();
+  const t = ctx.currentTime + debut, o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = frequence;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + duree + 0.02);
+}
+const bipDebut = () => bip(880);
+const bipGesteFini = () => { bip(660, 0); bip(660, 0.16); };
+const bipFin = () => { bip(523, 0); bip(659, 0.15); bip(784, 0.3, 0.18); };
+
 // ---- Apprentissage guidé : 10 coups de chaque geste ----
 let apprentissage = null;   // { etape, exemples, coups, debut }
 function consigneApprentissage() {
@@ -106,7 +119,7 @@ function lancerApprentissage() {
   $('precision').hidden = true;
   $('flash').style.background = '#234';
   $('flash').innerHTML = '<div style="font-size:20px">Prépare-toi…<br><span style="font-size:15px;font-weight:400;color:#bbb">tiens le téléphone comme pour jouer</span></div>';
-  setTimeout(() => { if (apprentissage && apprentissage.etape === 0 && apprentissage.coups === 0) consigneApprentissage(); }, 1500);
+  setTimeout(() => { if (apprentissage && apprentissage.etape === 0 && apprentissage.coups === 0) { consigneApprentissage(); bipDebut(); } }, 1500);
 }
 function coupApprentissage(t) {
   if (t < apprentissage.debut) return;
@@ -119,13 +132,15 @@ function coupApprentissage(t) {
     if (apprentissage.etape < GESTES.length) {
       apprentissage.debut = performance.now() + 1200;
       $('flash').innerHTML = `<div style="font-size:20px">C'est noté !<br><span style="font-size:15px;font-weight:400;color:#bbb">geste suivant : ${GESTES[apprentissage.etape].nom}</span></div>`;
-      setTimeout(consigneApprentissage, 1200);
+      bipGesteFini();
+      setTimeout(() => { consigneApprentissage(); bipDebut(); }, 1200);
       return;
     }
     terminerApprentissage();
   }, FENETRE + 20);
 }
 function terminerApprentissage() {
+  bipFin();
   const exemples = apprentissage.exemples; apprentissage = null;
   const precisions = ATTENTES.map((a) => Math.round(Gestes.evaluer(exemples, a).precision * 100));
   // attente choisie : la plus courte qui reconnaît au moins 95 % des exemples (sinon la meilleure)
