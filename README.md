@@ -12,12 +12,11 @@ Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-so
 2. La première fois : **calibration guidée** : l'écran demande **2 coups secs vers le BAS, puis 2 vers le HAUT** (↓ ↓ ↑ ↑), en tenant le téléphone comme pour jouer. Comme l'app connaît le sens de chaque coup, elle trouve sans deviner quel axe du téléphone sert de baguette ; elle affiche ce qu'elle a compris (« baguette en travers du téléphone »…) et recommence si les 4 coups ne sont pas tous nets.
 3. Jouer. Ajouter la page à l'écran d'accueil pour l'avoir en un toucher (iPhone : Partager → « Sur l'écran d'accueil » ; Android : ⋮ → « Ajouter à l'écran d'accueil »).
 
-- **Sensibilité** (0 à 100 %) : 100 % = le geste le plus léger suffit.
+- **Sensibilité** (0 à 100 %, **80 % par défaut**) : 100 % = le geste le plus léger suffit.
 - **Refaire la calibration** si on change franchement de prise en main (de petites variations ne gênent pas : testé jusqu'à 60° de rotation du téléphone dans la main et ±30° d'inclinaison).
 - **Écran noir verrouillé** : l'écran devient entièrement noir (presque aucune consommation sur un écran OLED) et ignore les touchers ; on continue de jouer. **Appui long de 2 s** pour revenir.
 - **« Voulez-vous fermer l'onglet ? » quand on agite le téléphone** : c'est la fonction « Secouer pour annuler » de l'iPhone, qu'une page web ne peut pas bloquer. La couper : **Réglages → Accessibilité → Toucher → Secouer pour annuler**.
 - L'écran reste allumé pendant le jeu (et le redemande si la page revient au premier plan) : un écran éteint suspendrait les mesures.
-- **Enregistrer 30 s de jeu (diagnostic)** : fonction temporaire pour comprendre une dérive. À la fin, « Envoyer le fichier au Mac » ouvre le partage de l'iPhone (AirDrop → dossier Téléchargements du Mac).
 - iPhone : le son joue même bouton latéral sur silencieux (iOS 17 et plus) ; sur les versions plus anciennes, désactiver le mode silencieux.
 
 ## Diagnostic de latence

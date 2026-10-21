@@ -26,14 +26,12 @@
   label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--doux); }
   input[type=range] { flex: 1; }
   .reglages { display: flex; flex-direction: column; gap: 10px; }
-  #diagnostic, #gain, #etatEnreg { font-size: 12px; color: var(--doux); }
-  .enreg { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  #diagnostic, #gain { font-size: 12px; color: var(--doux); }
   /* Écran noir verrouillé : rien d'autre que du noir (presque aucune consommation sur un écran OLED), touchers ignorés */
   #ecranNoir { position: fixed; inset: 0; z-index: 50; background: #000; touch-action: none; display: flex; align-items: flex-end;
                justify-content: center; padding-bottom: 48px; -webkit-touch-callout: none; }
   #ecranNoir[hidden] { display: none; }
   #indiceNoir { color: #1c1c1c; font-size: 13px; transition: color .2s; }
-  .enreg button { font-size: 13px; padding: 8px 10px; }
   .cartouche { margin-top: 8px; border-top: 1px solid #2a2a2a; text-align: center; color: var(--doux); font-size: 12px; letter-spacing: .12em; line-height: 1.7; padding: 10px 0 0; }
   .cartouche a { color: #a9b6ff; text-decoration: underline; text-underline-offset: 3px; }
 </style>
@@ -54,25 +52,26 @@
   <label><input type="checkbox" id="precoce"> Déclenchement précoce (dès le début du geste)</label>
   <div id="diagnostic"></div>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
-  <div class="enreg"><button id="enregistrer" class="secondaire">Enregistrer 30 s de jeu (diagnostic)</button> <button id="envoyer" class="secondaire" hidden>Envoyer le fichier au Mac</button> <span id="etatEnreg"></span></div>
   <div id="gain"></div>
 </div>
 
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21m</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21n</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021m"></script>
-<script src="sons.js?v=20261021m"></script>
+<script src="detecteur.js?v=20261021n"></script>
+<script src="sons.js?v=20261021n"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
-const reglages = { seuil: memo.seuil || 250, calibration: memo.calibration || null, precoce: !!memo.precoce };
+// sensibilité par défaut : 80 % (remise une fois à 80 % pour tous, puis réglable comme avant)
+const SEUIL_DEFAUT = Detecteur.sensibiliteVersSeuil(80);
+const reglages = { seuil: memo.defaut80 ? memo.seuil : SEUIL_DEFAUT, defaut80: true, calibration: memo.calibration || null, precoce: !!memo.precoce };
 const sauver = () => { try { localStorage.setItem('gyro-batterie', JSON.stringify(reglages)); } catch {} };
 
 // ---- Son, joué par le téléphone lui-même ----
@@ -167,46 +166,6 @@ function suivreCalibration(lu, t, e) {
   $('flash').textContent = 'Calibré ! À toi de jouer';
 }
 
-// ---- Enregistrement de diagnostic (temporaire) : 30 s de mesures brutes + chaque coup avec ce qui l'a décidé ----
-// À la fin, « Envoyer le fichier au Mac » ouvre le partage de l'iPhone (AirDrop → dossier Téléchargements du Mac).
-const DUREE_ENREG = 30000;
-let enreg = null, fichierEnreg = null;   // enreg : { debut, mesures, coups }
-const tableau = (o, champs) => (o && champs.some((k) => Number.isFinite(o[k])) ? champs.map((k) => Math.round((o[k] || 0) * 1000) / 1000) : null);
-function enregistrer(e, t) {
-  if (!enreg) return;
-  enreg.mesures.push([Math.round(t), tableau(e.rotationRate, ['alpha', 'beta', 'gamma']), tableau(e.acceleration, ['x', 'y', 'z']),
-    tableau(e.accelerationIncludingGravity, ['x', 'y', 'z']), e.interval]);
-  const reste = Math.ceil((DUREE_ENREG - (t - enreg.debut)) / 1000);
-  $('etatEnreg').textContent = reste > 0 ? `Joue normalement… ${reste} s` : '';
-  if (t - enreg.debut >= DUREE_ENREG) terminerEnregistrement();
-}
-function terminerEnregistrement() {
-  const contenu = { app: 'SEB-SOLOGYRO-BATTERIE', date: new Date().toISOString(), appareil: navigator.userAgent, reglages,
-    colonnes: ['t (ms)', 'rotationRate [alpha, beta, gamma] °/s', 'acceleration [x, y, z] m/s²', 'accelerationIncludingGravity [x, y, z] m/s²', 'interval'],
-    coups: enreg.coups, mesures: enreg.mesures };
-  const nom = `sologyro-mesures-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`;
-  fichierEnreg = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
-  $('etatEnreg').textContent = `${enreg.mesures.length} mesures, ${enreg.coups.length} coups`;
-  enreg = null;
-  $('enregistrer').disabled = false; $('envoyer').hidden = false;
-}
-$('enregistrer').onclick = () => {
-  if (!demarre) { $('etatEnreg').textContent = 'Démarre d\'abord (bouton du haut).'; return; }
-  enreg = { debut: performance.now(), mesures: [], coups: [] };
-  $('enregistrer').disabled = true; $('envoyer').hidden = true;
-};
-const telecharger = (f) => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(f), download: f.name }); document.body.append(a); a.click(); a.remove(); };
-$('envoyer').onclick = async () => {
-  if (!fichierEnreg) return;
-  // partage de l'iPhone (AirDrop…) ; s'il est indisponible ou refusé, simple téléchargement
-  if (navigator.canShare && navigator.canShare({ files: [fichierEnreg] })) {
-    try { await navigator.share({ files: [fichierEnreg], title: fichierEnreg.name }); $('etatEnreg').textContent = 'Fichier envoyé'; return; }
-    catch (err) { if (err && err.name === 'AbortError') return; }
-  }
-  telecharger(fichierEnreg);
-  $('etatEnreg').textContent = 'Fichier téléchargé (dossier Téléchargements / Fichiers)';
-};
-
 // ---- Diagnostic de latence : cadence du capteur et retard de la sortie son ----
 const intervalles = [];
 let dernierT = null;
@@ -227,7 +186,6 @@ function surMouvement(e) {
   const lu = lireAxes(e); if (!lu) return;
   recu = true;
   const t = performance.now();
-  enregistrer(e, t);
   diagnostiquer(t);
   lu.axes.forEach((v, i) => {   // jauges : chaque axe relativement à son maximum
     maxAxes[i] = Math.max(maxAxes[i], Math.abs(v));
@@ -244,7 +202,6 @@ function surMouvement(e) {
     // coup vers le bas → grosse caisse, vers le haut → cymbale : le sens de rotation du poignet, appris à la calibration
     const s = (coup.type === 'grosse-caisse' ? -1 : 1) * cal.sensRotation;
     const gc = s < 0;
-    if (enreg) enreg.coups.push({ t: Math.round(t), son: gc ? 'grosse-caisse' : 'cymbale', sens: s, force: Math.round(coup.force * 100) / 100, pic: Math.round(coup.pic) });
     (gc ? sons.grosseCaisse : sons.cymbale)(coup.force);
     $('flash').textContent = gc ? 'GROSSE CAISSE' : 'CYMBALE';
     $('flash').style.background = gc ? 'var(--gc)' : 'var(--cy)';
