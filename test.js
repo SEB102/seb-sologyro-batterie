@@ -133,6 +133,58 @@ test('calibration : téléphone immobile ou un seul coup → refusée', () => {
   assert.strictEqual(calibrer([]), null);
 });
 
+// ---- Déclenchement précoce : le coup part dès que le geste dépasse le seuil, sans attendre son sommet ----
+const PRECOCE = { precoce: true };
+test('précoce : coup vers le bas → une grosse caisse ; vers le haut → une cymbale', () => {
+  assert.deepStrictEqual(passer(signal([[100, zero], [120, cloche(-800)], [200, zero]]), PRECOCE).map((e) => e.type), ['grosse-caisse']);
+  assert.deepStrictEqual(passer(signal([[100, zero], [120, cloche(800)], [200, zero]]), PRECOCE).map((e) => e.type), ['cymbale']);
+});
+
+test('précoce : rebond du poignet non compté, deux coups rapprochés comptés, inclinaison lente ignorée', () => {
+  assert.strictEqual(passer(signal([[50, zero], [120, cloche(-900)], [100, cloche(450)], [200, zero]]), PRECOCE).length, 1);
+  assert.strictEqual(passer(signal([[50, zero], [120, cloche(-700)], [130, zero], [120, cloche(-700)], [100, zero]]), PRECOCE).length, 2);
+  assert.strictEqual(passer(signal([[1000, cloche(-150)], [1000, cloche(200)]]), PRECOCE).length, 0);
+});
+
+test('précoce : la force suit la vitesse du geste et reste dans 0..1', () => {
+  const f = (amp) => passer(signal([[50, zero], [120, cloche(amp)], [100, zero]]), PRECOCE)[0].force;
+  const faible = f(-400), moyen = f(-700), fort = f(-3000);
+  assert.ok(faible < moyen && moyen < fort && faible >= 0 && fort <= 1, `${faible} ${moyen} ${fort}`);
+});
+
+// Gain : écart entre le coup « au sommet » et le coup « précoce » sur le même geste, à 60 mesures/s
+function instantDuCoup(sig, reglages) {
+  const d = creerDetecteur(reglages);
+  for (const [v, t] of sig) if (d.traiter(v, t)) return t;
+  return null;
+}
+const GAINS = [];
+test('précoce : part au moins 2 mesures (33 ms) plus tôt que le mode « sommet », pour des gestes de 80 à 200 ms', () => {
+  for (const duree of [80, 120, 160, 200]) for (const amp of [400, 700, 1000, 1500]) {
+    const sig = signal([[50, zero], [duree, cloche(-amp)], [100, zero]]);
+    const gain = instantDuCoup(sig) - instantDuCoup(sig, PRECOCE);
+    GAINS.push(gain);
+    assert.ok(gain >= 2 * 1000 / 60 - 0.01, `geste ${duree} ms à ${amp} °/s : gain ${gain.toFixed(1)} ms`);
+  }
+  console.log(`      gain moyen ${(GAINS.reduce((a, b) => a + b, 0) / GAINS.length).toFixed(0)} ms (de ${Math.min(...GAINS).toFixed(0)} à ${Math.max(...GAINS).toFixed(0)} ms)`);
+});
+
+test('précoce : le gain mesuré en direct (surGain) égale l\'écart avec le mode « sommet »', () => {
+  const sig = signal([[50, zero], [140, cloche(-900)], [200, zero]]);
+  const mesures = [];
+  const d = creerDetecteur({ precoce: true, surGain: (ms) => mesures.push(ms) });
+  sig.forEach(([v, t]) => d.traiter(v, t));
+  assert.strictEqual(mesures.length, 1);
+  assert.ok(Math.abs(mesures[0] - (instantDuCoup(sig) - instantDuCoup(sig, PRECOCE))) < 0.01, `${mesures[0]}`);
+});
+
+test('mode « sommet » (par défaut) inchangé : surGain jamais appelé', () => {
+  const mesures = [];
+  const d = creerDetecteur({ surGain: (ms) => mesures.push(ms) });
+  signal([[50, zero], [140, cloche(-900)], [200, zero]]).forEach(([v, t]) => d.traiter(v, t));
+  assert.strictEqual(mesures.length, 0);
+});
+
 // ---- Alternance : chaque coup, dans n'importe quel sens, alterne grosse caisse / cymbale ----
 test('alternance : bas, bas, haut, bas, haut → GC, CY, GC, CY, GC (rebonds non comptés)', () => {
   const { creerAlternance } = require('./detecteur.js');

@@ -29,6 +29,12 @@ Sous les réglages, la page affiche :
 - **Bluetooth vers une enceinte** : possible mais ajoute 100 à 300 ms ; à éviter pour jouer en rythme. AirPlay vers un Mac ajoute plus encore (environ 2 s).
 - **Pour que l'ordinateur joue lui-même les sons**, utiliser plutôt [SEB-GYROBATTERIE](https://seb102.github.io/seb-gyrobatterie/).
 
+## Déclenchement précoce
+
+Case à cocher sur le téléphone : le coup part **dès que le geste dépasse le seuil**, au lieu d'attendre le sommet du geste. La force du coup est alors estimée d'après la vitesse et son accélération à cet instant (un peu moins fidèle). Le téléphone mesure à chaque coup le temps gagné et affiche la moyenne.
+
+Mesures (navigateur, gestes simulés à 60 mesures/s) : environ **78 ms de gagnés** en moyenne (de 33 à 133 ms selon la vitesse du geste ; plus le geste est lent, plus le gain est grand). Désactivée par défaut : le mode « sommet » reste inchangé.
+
 ## Licence
 
 SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENSE) : partage et adaptation libres en citant l'auteur, sans usage commercial.
@@ -37,4 +43,4 @@ SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENS
 
 - `index.html` : la page du téléphone (capteur, calibration, détection, son, diagnostic)
 - `detecteur.js` : détection des coups, calibration, alternance, sensibilité · `sons.js` : grosse caisse et cymbale synthétisées
-- `test.js` : `node test.js` (19 tests : détection, alternance, calibration dans 5 configurations de capteur, sons)
+- `test.js` : `node test.js` (25 tests : détection, déclenchement précoce, alternance, calibration dans 5 configurations de capteur, sons)

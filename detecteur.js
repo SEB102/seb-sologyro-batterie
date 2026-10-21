@@ -1,7 +1,10 @@
 // Détection d'un coup de baguette à partir de la vitesse de rotation du gyroscope.
 // Entrée : vitesse de rotation autour de l'axe choisi, en degrés/seconde, et l'heure en ms.
 // Convention : vitesse négative = coup vers le bas (grosse caisse), positive = vers le haut (cymbale).
-// Le coup part au sommet du geste (dès que la vitesse redescend), la force dépend de ce sommet.
+// Par défaut le coup part au sommet du geste (dès que la vitesse redescend), la force dépend de ce sommet.
+// Option « précoce » : le coup part dès que le geste dépasse le seuil ; la force est alors estimée
+// d'après la vitesse et son accélération à cet instant, et le sommet est quand même suivi pour
+// mesurer le temps gagné (surGain, en ms).
 (function (racine) {
   const REGLAGES_DEFAUT = {
     seuil: 250,          // °/s pour qu'un geste compte comme un coup
@@ -9,6 +12,8 @@
     blocageInverse: 180, // ms pendant lesquelles le sens opposé est ignoré (rebond du poignet)
     forceMax: 1200,      // °/s correspondant à la force maximale
     chute: 0.85,         // le sommet est atteint quand la vitesse retombe sous 85 % du pic
+    precoce: false,      // true : déclencher dès le franchissement du seuil
+    surGain: null,       // (ms) => …  appelé en mode précoce quand le sommet est atteint
   };
 
   function creerDetecteur(reglages) {
@@ -16,6 +21,8 @@
     let etat = 'repos';   // repos | montee | attente
     let sens = 0, pic = 0;
     let dernierSens = 0, dernierT = -Infinity;
+    let precedente = 0;   // vitesse (signée) de la mesure précédente
+    let suivi = null;     // mode précoce : { t0, sens, pic } jusqu'au sommet du geste
 
     function declencher(t) {
       dernierSens = sens; dernierT = t;
@@ -27,7 +34,12 @@
     function traiter(vitesse, t) {
       if (!Number.isFinite(vitesse)) return null;
       const v = Math.abs(vitesse), s = Math.sign(vitesse);
+      const avant = precedente; precedente = vitesse;
 
+      if (suivi) {   // mode précoce : où aurait été le coup « au sommet » ?
+        if (s === suivi.sens && v >= suivi.pic) suivi.pic = v;
+        else if (s !== suivi.sens || v < suivi.pic * r.chute) { if (r.surGain) r.surGain(t - suivi.t0); suivi = null; }
+      }
       if (etat === 'attente') {
         if (v < r.rearmement) etat = 'repos';
         return null;
@@ -35,7 +47,15 @@
       if (etat === 'repos') {
         if (v <= r.seuil) return null;
         if (s === -dernierSens && t - dernierT < r.blocageInverse) { etat = 'attente'; return null; }
-        etat = 'montee'; sens = s; pic = v;
+        sens = s; pic = v;
+        if (r.precoce) {
+          // sommet estimé : vitesse actuelle + ce qu'elle vient de gagner en une mesure
+          const montee = Math.sign(avant) === s ? v - Math.abs(avant) : v;
+          pic = v + Math.max(0, montee);
+          suivi = { t0: t, sens: s, pic: v };
+          return declencher(t);
+        }
+        etat = 'montee';
         return null;
       }
       // montee
