@@ -26,7 +26,6 @@
   label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--doux); }
   input[type=range] { flex: 1; }
   .reglages { display: flex; flex-direction: column; gap: 10px; }
-  #diagnostic, #gain { font-size: 12px; color: var(--doux); }
   /* Écran noir verrouillé : rien d'autre que du noir (presque aucune consommation sur un écran OLED), touchers ignorés */
   #ecranNoir { position: fixed; inset: 0; z-index: 50; background: #000; touch-action: none; display: flex; align-items: flex-end;
                justify-content: center; padding-bottom: 48px; -webkit-touch-callout: none; }
@@ -53,23 +52,21 @@
 <div class="reglages">
   <button id="calibrer" class="secondaire">Refaire la calibration (2 coups vers le haut, 2 vers le bas)</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
-  <div id="diagnostic"></div>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
-  <div id="gain"></div>
 </div>
 
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21q</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21r</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021q"></script>
-<script src="sons.js?v=20261021q"></script>
+<script src="detecteur.js?v=20261021r"></script>
+<script src="sons.js?v=20261021r"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -87,24 +84,14 @@ const sons = creerSons(ctx);
 
 // ---- Sensibilité (curseur à droite = gestes plus légers) ----
 let detecteur;
-// Déclenchement précoce : le détecteur mesure à chaque coup le temps gagné sur le sommet du geste
-const gains = [];
-function afficherGain() {
-  const moy = gains.reduce((a, b) => a + b, 0) / (gains.length || 1);
-  $('gain').textContent = !reglages.precoce ? ''
-    : gains.length ? `Gain mesuré : ${Math.round(moy)} ms plus tôt qu'au sommet du geste (moyenne sur ${gains.length} coup${gains.length > 1 ? 's' : ''})`
-    : 'Gain mesuré : frappe pour le mesurer';
-}
-function noterGain(ms) { gains.push(ms); if (gains.length > 20) gains.shift(); afficherGain(); }
 function appliquerSeuil(seuil) {
   reglages.seuil = seuil; sauver();
-  detecteur = Detecteur.creerDetecteur({ seuil, precoce: reglages.precoce, surGain: noterGain });
+  detecteur = Detecteur.creerDetecteur({ seuil, precoce: reglages.precoce });
   const p = Detecteur.seuilVersSensibilite(seuil);
   $('seuil').value = p; $('vseuil').textContent = p + ' %';
 }
 appliquerSeuil(reglages.seuil);
 $('seuil').oninput = (e) => appliquerSeuil(Detecteur.sensibiliteVersSeuil(Number(e.target.value)));
-afficherGain();
 
 // ---- Lecture du capteur, quel que soit le téléphone ----
 // Gyroscope si présent ; sinon accéléromètre (sans gravité, ou avec gravité retirée par un filtre).
@@ -172,27 +159,12 @@ function suivreCalibration(lu, t, e) {
   $('flash').textContent = 'Calibré ! À toi de jouer';
 }
 
-// ---- Diagnostic de latence : cadence du capteur et retard de la sortie son ----
-const intervalles = [];
-let dernierT = null;
-function diagnostiquer(t) {
-  if (dernierT !== null) { intervalles.push(t - dernierT); if (intervalles.length > 60) intervalles.shift(); }
-  dernierT = t;
-}
-setInterval(() => {
-  if (intervalles.length < 10) return;
-  const moy = intervalles.reduce((a, b) => a + b, 0) / intervalles.length;
-  const sonMs = Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000);
-  $('diagnostic').textContent = `Capteur : ${Math.round(1000 / moy)} mesures/s · détection : environ ${Math.round((reglages.precoce ? 0.5 : 1.5) * moy)} ms · sortie son : ${sonMs ? sonMs + ' ms' : 'inconnue'}`;
-}, 1000);
-
 // ---- Jeu ----
 let timerFlash, maxAxes = [1, 1, 1], recu = false;
 function surMouvement(e) {
   const lu = lireAxes(e); if (!lu) return;
   recu = true;
   const t = performance.now();
-  diagnostiquer(t);
   lu.axes.forEach((v, i) => {   // jauges : chaque axe relativement à son maximum
     maxAxes[i] = Math.max(maxAxes[i], Math.abs(v));
     const n = v / maxAxes[i], el = $('j' + i);

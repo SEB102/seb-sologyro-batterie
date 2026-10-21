@@ -20,13 +20,6 @@ Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-so
 - L'écran reste allumé pendant le jeu (et le redemande si la page revient au premier plan) : un écran éteint suspendrait les mesures.
 - iPhone : le son joue même bouton latéral sur silencieux (iOS 17 et plus) ; sur les versions plus anciennes, désactiver le mode silencieux.
 
-## Diagnostic de latence
-
-Sous les réglages, la page affiche :
-- **Capteur** : nombre de mesures par seconde que le navigateur fournit (souvent 60 ; moins sur certains téléphones ou en mode économie d'énergie).
-- **Détection** : retard dû à l'attente du sommet du geste (environ 1,5 mesure).
-- **Sortie son** : retard annoncé par le téléphone entre le déclenchement et le haut-parleur.
-
 ## Envoyer le son vers un ordinateur ou une sono
 
 - **Câble** (le plus direct, sans retard ajouté) : sortie casque du téléphone (ou adaptateur USB-C / Lightning → jack) vers l'entrée ligne de l'ordinateur, d'une carte son ou d'une table de mixage.
@@ -35,7 +28,7 @@ Sous les réglages, la page affiche :
 
 ## Déclenchement précoce (toujours actif)
 
-Le coup part **dès que le geste dépasse le seuil**, sans attendre le sommet du geste : environ **78 ms de gagnés** en moyenne (de 33 à 133 ms selon la vitesse du geste ; mesuré dans le navigateur à 60 mesures/s). Ce n'est plus une option : c'est le seul mode, depuis le 21/10/2026. La force du coup est estimée d'après la vitesse et son accélération à cet instant. Le téléphone affiche à chaque coup le temps gagné (« Gain mesuré »).
+Le coup part **dès que le geste dépasse le seuil**, sans attendre le sommet du geste : environ **78 ms de gagnés** en moyenne (de 33 à 133 ms selon la vitesse du geste ; mesuré dans le navigateur à 60 mesures/s). Ce n'est plus une option : c'est le seul mode, depuis le 21/10/2026. La force du coup est estimée d'après la vitesse et son accélération à cet instant.
 
 ## Grosse caisse en bas, cymbale en haut
 
