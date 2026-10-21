@@ -39,6 +39,8 @@ Mesures (navigateur, gestes simulés à 60 mesures/s) : environ **78 ms de gagn�
 
 C'est le **sens du coup dans la pièce** qui décide : un coup qui part **vers le sol** joue la grosse caisse, un coup **vers le plafond** la cymbale, quelle que soit la façon de tenir le téléphone (bras levé et téléphone pointé vers le haut, un coup vers le bas reste une grosse caisse). Le téléphone projette sa propre accélération sur la direction de la gravité et en déduit la vitesse verticale du geste (`creerVerticale` dans `detecteur.js`) ; le moment du coup reste donné par le gyroscope. Testé dans 7 inclinaisons du téléphone, avec les deux conventions de signe des navigateurs, et sur les téléphones sans mesure d'accélération « sans gravité ».
 
+**Le bout de la « baguette ».** Mesurer seulement le mouvement du téléphone ne suffit pas : quand le bras tourne vite, le téléphone est tiré vers le coude (effet « manège »), ce qui faisait lire « vers le bas » un coup vers le haut donné bras levé (constaté sur iPhone le 21/10/2026). La calibration apprend donc aussi **quel axe du téléphone sert de baguette** (celui dont la rotation produit le mouvement le plus vertical : le long du téléphone s'il est tenu comme une baguette, en travers s'il est tenu debout dans le poing). À chaque coup, le sens vient de la vitesse du bout de cette baguette : instantané, sans dérive. Une calibration faite avant cette correction est refaite automatiquement une fois. Vérifié sur de vraies mesures d'iPhone (`mesures-iphone.json`) : 24 coups sur 25 dans le sens du geste, contre presque tous en grosse caisse avant.
+
 ## Licence
 
 SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENSE) : partage et adaptation libres en citant l'auteur, sans usage commercial.
@@ -47,4 +49,4 @@ SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · [CC BY-NC 4.0](LICENS
 
 - `index.html` : la page du téléphone (capteur, calibration, détection, son, diagnostic)
 - `detecteur.js` : détection des coups, calibration, sens 3D, sensibilité · `sons.js` : grosse caisse et cymbale synthétisées
-- `test.js` : `node test.js` (34 tests : détection, déclenchement précoce, sens 3D, calibration dans 5 configurations de capteur, sons)
+- `test.js` : `node test.js` (42 tests : détection, déclenchement précoce, sens 3D et baguette (dont vraies mesures d'iPhone), calibration dans 5 configurations de capteur, sons)

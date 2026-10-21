@@ -268,6 +268,98 @@ test('3D : deux coups successifs dans des sens opposés sont bien distingués', 
   assert.deepStrictEqual(sensAuMilieu, [-1, +1]);
 });
 
+// ---- 3D par la baguette : coup de poignet réaliste, avec l'effet « manège » (accélération vers le coude) ----
+// Défaut constaté sur iPhone : un coup vers le haut, bras déjà levé, était lu « vers le bas » (l'accélération
+// centripète tire alors le téléphone vers le bas). Correction : la calibration apprend quel axe du téléphone est
+// « la baguette », puis le sens vient de la vitesse du BOUT de la baguette (rotation × axe, projetée sur la verticale).
+const { calibrerBaguette } = require('./detecteur.js');
+function poignet({ coups = [[+1, 0]], r = 0.12, duree = 150, amplitude = 60, tenue = 1, ecran = 1, convention = 'navigateurs', inverse = false, hz = 60, calme = 500, debout = false } = {}) {
+  const dt = 1000 / hz, ech = [], rad = Math.PI / 180;
+  // déroulé de l'angle de la baguette θ (élévation) : pour chaque coup [sens, angle de départ]
+  const segments = []; let t = calme;
+  for (const [sens, depart] of coups) { segments.push({ t0: t, sens, depart }); t += duree + calme; }
+  const fin = t;
+  const etat = (tt) => {   // θ, θ', θ'' en rad, rad/s, rad/s²
+    let s = segments[0];
+    for (const x of segments) if (tt >= x.t0 - calme / 2) s = x;
+    const u = (tt - s.t0) / duree, D = s.sens * amplitude * rad, T = duree / 1000;
+    if (u <= 0) return { th: s.depart * rad, w: 0, al: 0, u };
+    if (u >= 1) return { th: s.depart * rad + D, w: 0, al: 0, u };
+    return { th: s.depart * rad + D * (1 - Math.cos(Math.PI * u)) / 2, w: D * Math.PI / (2 * T) * Math.sin(Math.PI * u), al: D * Math.PI ** 2 / (2 * T * T) * Math.cos(Math.PI * u), u };
+  };
+  for (let tt = 0; tt < fin; tt += dt) {
+    const { th, w, al, u } = etat(tt);
+    const c = Math.cos(th), s = Math.sin(th);
+    const lin = [r * al * -s - r * w * w * c, 0, r * al * c - r * w * w * s];      // tangentielle + centripète
+    const croix = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let ex, ey, ez;
+    if (debout) { ex = [tenue * c, 0, tenue * s]; ey = [-s * ecran, 0, c * ecran]; ez = croix(ex, ey); }   // debout dans le poing : l'avant-bras (la baguette) le long de x
+    else { ey = [tenue * c, 0, tenue * s]; ez = [0, ecran, 0]; ex = croix(ey, ez); }
+    const tel = (v) => [ex, ey, ez].map((e) => e[0] * v[0] + e[1] * v[1] + e[2] * v[2]);
+    const wTel = tel([0, -w, 0]).map((x) => x / rad);                                  // °/s dans le repère du téléphone
+    const rot = convention === 'navigateurs' ? wTel : [wTel[2], wTel[0], wTel[1]];     // [alpha, beta, gamma]
+    const k = inverse ? -1 : 1;
+    ech.push({ t: tt, u, rot, acc: tel(lin).map((x) => k * x), accG: tel([lin[0], lin[1], lin[2] + 9.81]).map((x) => k * x) });
+  }
+  return ech;
+}
+const avecAxes = (ech) => ech.map((e) => ({ ...e, axes: e.rot }));
+function jouer3D(o, { baguette = true } = {}) {
+  const calibration = poignet({ ...o, coups: [[1, 0], [-1, 0], [1, 10]] });
+  const cal = calibrer(avecAxes(calibration)), b = baguette ? calibrerBaguette(calibration) : null;
+  const v = creerVerticale({ baguette: b }), det = creerDetecteur({ seuil: 182, precoce: !!o.precoce }), sens = [];
+  for (const e of poignet(o)) { v.ajouter(e.t, e.acc, e.accG, e.rot); if (det.traiter(e.rot[cal.axe] * cal.signe * cal.facteur, e.t)) sens.push(v.sens()); }
+  return sens;
+}
+const DEPARTS = [[1, -30], [1, 0], [1, 30], [1, 60], [-1, -20], [-1, 0], [-1, 60], [-1, 90]];
+
+test('baguette : le défaut est bien reproduit sans elle (coup vers le haut bras levé lu « vers le bas »)', () => {
+  assert.deepStrictEqual(jouer3D({ coups: [[1, 60]] }, { baguette: false }), [-1]);
+});
+
+test('baguette : coups vers le haut et vers le bas, baguette partant de -30° à +90°, pivot poignet ou coude', () => {
+  for (const r of [0.12, 0.35]) for (const [sens, depart] of DEPARTS) {
+    assert.deepStrictEqual(jouer3D({ coups: [[sens, depart]], r }), [sens], `pivot ${r} m, sens ${sens}, départ ${depart}°`);
+  }
+});
+
+test('baguette : la séquence signalée (bas, remontée, haut ×2) donne bas, haut, bas, haut', () => {
+  assert.deepStrictEqual(jouer3D({ coups: [[-1, 40], [1, 0], [-1, 40], [1, 0]] }), [-1, 1, -1, 1]);
+});
+
+test('baguette : téléphone tenu dans l\'autre sens, écran de l\'autre côté, convention d\'axes de la norme, signes inversés', () => {
+  for (const o of [{ tenue: -1 }, { ecran: -1 }, { convention: 'norme' }, { inverse: true }, { tenue: -1, ecran: -1, convention: 'norme', inverse: true }])
+    for (const [sens, depart] of DEPARTS) assert.deepStrictEqual(jouer3D({ ...o, coups: [[sens, depart]] }), [sens], `${JSON.stringify(o)} sens ${sens}, départ ${depart}°`);
+});
+
+test('baguette : téléphone tenu debout dans le poing (comme sur l\'iPhone mesuré), toutes tenues', () => {
+  for (const o of [{ debout: true }, { debout: true, tenue: -1 }, { debout: true, ecran: -1 }, { debout: true, inverse: true, convention: 'norme' }])
+    for (const [sens, depart] of DEPARTS) assert.deepStrictEqual(jouer3D({ ...o, coups: [[sens, depart]] }), [sens], `${JSON.stringify(o)} sens ${sens}, départ ${depart}°`);
+});
+
+test('baguette : juste aussi en déclenchement précoce', () => {
+  for (const [sens, depart] of DEPARTS) assert.deepStrictEqual(jouer3D({ precoce: true, coups: [[sens, depart]] }), [sens], `sens ${sens}, départ ${depart}°`);
+});
+
+test('baguette : rien à apprendre si le téléphone ne bouge pas', () => {
+  assert.strictEqual(calibrerBaguette(poignet({ coups: [[1, 0]], amplitude: 0 })), null);
+  assert.strictEqual(calibrerBaguette([]), null);
+});
+
+test('baguette : vraies mesures de l\'iPhone (21/10) — coups vers le haut partis franchement vers le haut → cymbale', () => {
+  const vrai = require('./mesures-iphone.json');
+  const ech = vrai.mesures.map(([t, rot, acc, accG]) => ({ t, rot, acc, accG }));
+  const b = calibrerBaguette(ech);
+  assert.ok(b, 'baguette non trouvée');
+  const cal = vrai.reglages.calibration, v = creerVerticale({ baguette: b }), det = creerDetecteur({ seuil: vrai.reglages.seuil }), sons = {};
+  for (const e of ech) { v.ajouter(e.t, e.acc, e.accG, e.rot); if (det.traiter(e.rot[cal.axe] * cal.signe * cal.facteur, e.t)) sons[e.t] = v.sens() > 0 ? 'cymbale' : 'grosse-caisse'; }
+  // mêmes instants de coup que sur le téléphone
+  assert.deepStrictEqual(Object.keys(sons).map(Number), vrai.coups.map((c) => c.t));
+  // coups dont le début du geste montait nettement (+0,36 et +0,41 m/s) : cymbale ; coups nettement vers le bas : grosse caisse
+  for (const t of [21717, 22683]) assert.strictEqual(sons[t], 'cymbale', `coup ${t}`);
+  for (const t of [19067, 20905, 23083]) assert.strictEqual(sons[t], 'grosse-caisse', `coup ${t}`);
+});
+
 // ---- Comptage des coups pendant la calibration (affiché en direct sur le téléphone) ----
 test('calibration : les coups reconnus se comptent au fur et à mesure (0, 1, 2, 3)', () => {
   const { compterCoups } = require('./detecteur.js');

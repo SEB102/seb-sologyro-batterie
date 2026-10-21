@@ -50,20 +50,21 @@
 </div>
 
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-21g</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-21i</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261021g"></script>
-<script src="sons.js?v=20261021g"></script>
+<script src="detecteur.js?v=20261021i"></script>
+<script src="sons.js?v=20261021i"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
 const reglages = { seuil: memo.seuil || 250, calibration: memo.calibration || null, precoce: !!memo.precoce };
 const verticale = Detecteur.creerVerticale();   // sens du coup dans la pièce : vers le sol ou vers le plafond
+if (reglages.calibration) verticale.regler(reglages.calibration.baguette || null);   // axe « baguette » appris à la calibration
 const sauver = () => { try { localStorage.setItem('gyro-batterie', JSON.stringify(reglages)); } catch {} };
 
 // ---- Son, joué par le téléphone lui-même ----
@@ -124,15 +125,16 @@ function afficherCalibration(titre, detail) {
 function lancerCalibration(apres = 0) {
   calibration = { debut: performance.now() + apres, echantillons: [], coups: 0, fin: null };
   $('flash').style.background = '#234'; $('flash').style.color = '';
-  if (!apres) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, dans n\'importe quel sens');
+  if (!apres) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, vers le bas ou vers le haut');
 }
-function suivreCalibration(lu, t) {
+function suivreCalibration(lu, t, e) {
   if (t < calibration.debut) return;   // pause après un essai raté, le message reste affiché
   const c = calibration;
-  if (!c.echantillons.length) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, dans n\'importe quel sens');
-  c.echantillons.push({ t, axes: lu.axes });
+  if (!c.echantillons.length) afficherCalibration('Calibration : donne 3 coups secs', 'comme avec une baguette, vers le bas ou vers le haut');
+  // mesures complètes : la calibration apprend aussi quel axe du téléphone sert de baguette
+  c.echantillons.push({ t, axes: lu.axes, rot: e.rotationRate, acc: e.acceleration, accG: e.accelerationIncludingGravity });
   if (c.echantillons.length % 4 === 0) {
-    const n = Math.min(COUPS_CALIBRATION, Detecteur.compterCoups(c.echantillons));
+    const n = Math.max(c.coups, Math.min(COUPS_CALIBRATION, Detecteur.compterCoups(c.echantillons)));   // ne recule jamais à l'écran
     if (n !== c.coups) {
       c.coups = n;
       afficherCalibration(n < COUPS_CALIBRATION ? `Coup ${n} reconnu` : '3 coups reconnus', n < COUPS_CALIBRATION ? 'encore ' + (COUPS_CALIBRATION - n) : 'un instant…');
@@ -146,7 +148,8 @@ function suivreCalibration(lu, t) {
     lancerCalibration(2000);
     return;
   }
-  reglages.calibration = { ...res, source: lu.source }; sauver();
+  reglages.calibration = { ...res, source: lu.source, baguette: Detecteur.calibrerBaguette(c.echantillons) }; sauver();
+  verticale.regler(reglages.calibration.baguette);
   calibration = null;
   $('flash').style.background = ''; $('flash').textContent = 'Calibré ! À toi de jouer';
 }
@@ -171,16 +174,17 @@ function surMouvement(e) {
   const lu = lireAxes(e); if (!lu) return;
   recu = true;
   const t = performance.now();
-  verticale.ajouter(t, e.acceleration, e.accelerationIncludingGravity);
+  verticale.ajouter(t, e.acceleration, e.accelerationIncludingGravity, e.rotationRate);
   diagnostiquer(t);
   lu.axes.forEach((v, i) => {   // jauges : chaque axe relativement à son maximum
     maxAxes[i] = Math.max(maxAxes[i], Math.abs(v));
     const n = v / maxAxes[i], el = $('j' + i);
     el.style.left = (n < 0 ? 50 + n * 50 : 50) + '%'; el.style.width = Math.abs(n) * 50 + '%';
   });
-  if (calibration) return suivreCalibration(lu, t);
+  if (calibration) return suivreCalibration(lu, t, e);
   const cal = reglages.calibration;
-  if (!cal || cal.source !== lu.source) return lancerCalibration();
+  // une calibration d'avant la « baguette » est refaite une fois
+  if (!cal || cal.source !== lu.source || !('baguette' in cal)) return lancerCalibration();
 
   const coup = detecteur.traiter(lu.axes[cal.axe] * cal.signe * cal.facteur, t);
   if (coup) {
