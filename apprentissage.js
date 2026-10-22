@@ -12,7 +12,7 @@
   // gestes = [{ id, ... }] ; signaler({ type: 'preparation' | 'debut' | 'coup' | 'gesteFini' | 'fin', ... })
   function creerApprentissage({ gestes, parGeste = 10, preparation = 1500, entreGestes = 1200, signaler,
     minuterie = (f, ms) => setTimeout(f, ms), maintenant = () => performance.now() }) {
-    const a = { etape: 0, coups: 0, exemples: [], debut: maintenant() + preparation, sens: null, fini: false };
+    const a = { etape: 0, coups: 0, exemples: [], debut: maintenant() + preparation, sens: null, forces: [], fini: false };
     const debut = (e) => () => { if (!a.fini && a.etape === e) signaler({ type: 'debut', etape: e, geste: gestes[e], coups: a.coups }); };
     signaler({ type: 'preparation' });
     minuterie(debut(0), preparation);
@@ -22,20 +22,32 @@
       get exemples() { return a.exemples; },
       // un coup détecté à l'instant t est-il à prendre ? (pas pendant la préparation ni la pause entre deux gestes)
       ecoute: (t) => !a.fini && t >= a.debut,
-      // coup détecté à t pendant l'étape « etape », avec les mesures de toute sa fenêtre → 'compte' | 'retour' | 'deborde' | 'pasDeRepos'
+      // coup détecté à t pendant l'étape « etape », avec les mesures de toute sa fenêtre
+      // → 'compte' | 'recommence' (le sens retenu était celui de l'élan) | 'retour' | 'faible' | 'deborde' | 'pasDeRepos'
       // repos : le téléphone était immobile juste avant. Le 1er coup d'un geste fixe son sens : il doit partir du repos, sinon un
       // mouvement d'installation (remettre le téléphone en main juste après le départ) servirait de référence et tout s'inverserait.
       coup(t, etape, mesures, repos = true) {
         if (a.fini || etape !== a.etape) return 'deborde';
         if (!a.sens && !repos) return 'pasDeRepos';
-        const sens = sensDuCoup(mesures, t);
-        if (a.sens && sens.reduce((s, x, i) => s + x * a.sens[i], 0) < 0) return 'retour';
-        const n = Math.hypot(...sens) || 1;
+        const sens = sensDuCoup(mesures, t), force = Math.hypot(...sens), moyenne = a.forces.reduce((s, x) => s + x, 0) / (a.forces.length || 1);
+        // Force : le vrai coup est nettement plus vif que l'élan qui le précède et que le retour (iPhone, 22/10/2026 : environ
+        // 3 à 5 fois). Un mouvement en sens inverse BEAUCOUP plus fort que les coups comptés, en début de geste, montre que le
+        // sens retenu était celui de l'élan : on repart de ce coup. Un mouvement beaucoup plus faible est un simple réajustement.
+        let resultat = 'compte';
+        if (a.sens) {
+          const memeSens = sens.reduce((s, x, i) => s + x * a.sens[i], 0) >= 0;
+          if (!memeSens && force > 1.8 * moyenne && a.coups <= 5) {
+            a.exemples.splice(a.exemples.length - a.coups, a.coups); a.coups = 0; a.sens = null; a.forces = []; resultat = 'recommence';
+          } else if (!memeSens) return 'retour';
+          else if (force < 0.35 * moyenne) return 'faible';
+        }
+        a.forces.push(force);
+        const n = force || 1;
         a.sens = (a.sens || [0, 0, 0]).map((x, i) => x + sens[i] / n);
         a.exemples.push({ geste: gestes[etape].id, t: Math.round(t), mesures });
         a.coups++;
-        if (a.coups < parGeste) { signaler({ type: 'coup', etape, geste: gestes[etape], coups: a.coups }); return 'compte'; }
-        a.etape++; a.coups = 0; a.sens = null;
+        if (a.coups < parGeste) { signaler({ type: 'coup', etape, geste: gestes[etape], coups: a.coups }); return resultat; }
+        a.etape++; a.coups = 0; a.sens = null; a.forces = [];
         if (a.etape < gestes.length) {
           a.debut = maintenant() + entreGestes;
           signaler({ type: 'gesteFini', etape: etape, suivant: gestes[a.etape] });

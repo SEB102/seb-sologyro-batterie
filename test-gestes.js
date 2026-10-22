@@ -280,4 +280,38 @@ test('apprentissage : un mouvement d\'installation juste après le départ (sans
   assert.strictEqual(m.length, 15);
 });
 
+// ---- Vrai apprentissage sur iPhone (22/10/2026) : élan avant le coup, coup vif, retour ----
+// Rejoue chaque geste de l'enregistrement : mouvements détectés par le téléphone, décision de l'apprentissage
+function rejouerApprentissageReel() {
+  const j = require('./apprentissage-iphone.json');
+  const mes = j.mesures.map(([t, rot, acc]) => ({ t, rot, acc }));
+  const bornes = j.evenements.filter((e) => e[1] === 'debut').map((e) => e[0]);
+  const fins = j.evenements.filter((e) => e[1] === 'gesteFini' || e[1] === 'fin').map((e) => e[0]);
+  return bornes.map((debut, k) => {
+    const app = A.creerApprentissage({ gestes: [{ id: QUATRE[k] }], parGeste: 1000, signaler: () => {}, maintenant: () => debut, minuterie: () => {}, preparation: 0 });
+    const coups = j.decisions.filter((d) => d.etape === k && d.t >= debut && d.t <= fins[k] + 300).map((d) => {
+      const m = mes.filter((x) => x.t >= d.t - 100 && x.t <= d.t + 200);
+      return { t: d.t, sens: A.sensDuCoup(m, d.t), resultat: app.coup(d.t, 0, m, d.repos) };
+    });
+    return { geste: QUATRE[k], coups, exemples: app.exemples };
+  });
+}
+
+test('vrai apprentissage iPhone : l\'élan (plus lent, en sens inverse) ne fixe plus le sens ; les coups vifs sont comptés, élans et retours écartés', () => {
+  for (const { geste, coups, exemples } of rejouerApprentissageReel()) {
+    const force = (c) => Math.hypot(...c.sens);
+    // sens du geste = celui des mouvements les plus vifs (le vrai coup est toujours nettement plus vif que l'élan et le retour)
+    const vifs = [...coups].sort((a, b) => force(b) - force(a)).slice(0, 4);
+    const sensVif = vifs.reduce((s, c) => s.map((x, i) => x + c.sens[i] / force(c)), [0, 0, 0]);
+    const ecartes = coups.filter((c) => c.resultat !== 'compte' && c.resultat !== 'recommence');
+    const dot = (c) => c.sens.reduce((a, x, i) => a + x * sensVif[i], 0);
+    // les exemples appris vont tous dans le sens des coups vifs (un élan compté au début est retiré)
+    const mauvais = exemples.filter((e) => A.sensDuCoup(e.mesures, e.t).reduce((a, x, i) => a + x * sensVif[i], 0) <= 0);
+    assert.strictEqual(mauvais.length, 0, `${geste} : ${mauvais.length} exemple(s) sur ${exemples.length} dans le mauvais sens`);
+    // aucun coup vif dans le bon sens n'est écarté
+    const perdus = ecartes.filter((c) => dot(c) > 0 && force(c) > 0.6 * force(vifs[3]) && c.resultat !== 'deborde' && c.resultat !== 'pasDeRepos');
+    assert.strictEqual(perdus.length, 0, `${geste} : ${perdus.length} coup(s) vif(s) écarté(s)`);
+  }
+});
+
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);

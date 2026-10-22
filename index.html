@@ -78,18 +78,18 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-22e</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-22f</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261022e"></script>
-<script src="sons.js?v=20261022e"></script>
-<script src="gestes.js?v=20261022e"></script>
-<script src="apprentissage.js?v=20261022e"></script>
-<script src="jeu-gestes.js?v=20261022e"></script>
+<script src="detecteur.js?v=20261022f"></script>
+<script src="sons.js?v=20261022f"></script>
+<script src="gestes.js?v=20261022f"></script>
+<script src="apprentissage.js?v=20261022f"></script>
+<script src="jeu-gestes.js?v=20261022f"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
