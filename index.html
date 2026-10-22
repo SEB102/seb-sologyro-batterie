@@ -18,18 +18,18 @@
   #etat { color: var(--doux); font-size: 14px; }
   button { font: inherit; font-size: 20px; padding: 18px; border: 0; border-radius: 12px; background: #2a6; color: #fff; }
   button.secondaire { font-size: 15px; padding: 12px; background: #2a2a2a; color: var(--texte); }
-  #flash { flex: 1; min-height: 160px; border-radius: 16px; background: #1c1c1c; display: flex; align-items: center;
-           justify-content: center; text-align: center; padding: 12px; font-size: 28px; font-weight: 600; transition: background .25s; }
+  #flash { flex: none; min-height: 48px; border-radius: 12px; background: #1c1c1c; display: flex; align-items: center;
+           justify-content: center; text-align: center; padding: 6px 10px; font-size: 18px; font-weight: 600; transition: background .25s; }
   .jauges { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--doux); }
   .jauge { height: 10px; background: #222; border-radius: 5px; position: relative; overflow: hidden; }
   .jauge i { position: absolute; top: 0; bottom: 0; left: 50%; background: #48f; }
   label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--doux); }
   input[type=range] { flex: 1; }
   .reglages { display: flex; flex-direction: column; gap: 10px; }
-  .gestes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: var(--doux); }
-  .gestes div { background: #1c1c1c; border-radius: 10px; padding: 8px 10px; border-left: 5px solid var(--c); }
-  .gestes b { color: var(--texte); display: block; font-size: 14px; }
-  .gestes select { width: 100%; margin-top: 6px; font-size: 15px; padding: 6px; border: 0; border-radius: 6px; background: #2a2a2a; color: var(--texte); }
+  .gestes { display: flex; flex-direction: column; gap: 10px; color: var(--doux); }
+  .gestes div { background: #1c1c1c; border-radius: 12px; padding: 12px 14px; border-left: 8px solid var(--c); }
+  .gestes b { color: var(--texte); display: block; font-size: 22px; }
+  .gestes select { width: 100%; margin-top: 8px; font-size: 22px; padding: 12px; border: 0; border-radius: 8px; background: #333; color: var(--texte); }
   #precision { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
   #precision[hidden] { display: none; }
   .choix { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -82,19 +82,19 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-22u</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-22v</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261022u"></script>
-<script src="sons.js?v=20261022u"></script>
-<script src="gestes.js?v=20261022u"></script>
-<script src="apprentissage.js?v=20261022u"></script>
-<script src="gestes-defaut.js?v=20261022u"></script>
-<script src="jeu-gestes.js?v=20261022u"></script>
+<script src="detecteur.js?v=20261022v"></script>
+<script src="sons.js?v=20261022v"></script>
+<script src="gestes.js?v=20261022v"></script>
+<script src="apprentissage.js?v=20261022v"></script>
+<script src="gestes-defaut.js?v=20261022v"></script>
+<script src="jeu-gestes.js?v=20261022v"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
