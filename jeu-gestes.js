@@ -57,12 +57,22 @@
         flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus avec ${choix} ms d'attente · à toi de jouer`), '');
       }
     }
-    // Diagnostic : mesures brutes et décisions du dernier apprentissage, envoyées par le bouton « diagnostic » de la page
+    // Diagnostic : mesures brutes et décisions du dernier apprentissage, et de la dernière minute et demie de jeu (sons joués,
+    // mouvements rendus muets), envoyées par le bouton « diagnostic » de la page
     let journal = null;
+    const journalJeu = { duree: 90000, mesures: [], coups: [] };
+    function noterJeu(t, mesure, coup) {
+      if (mesure) journalJeu.mesures.push(mesure);
+      if (coup) journalJeu.coups.push(coup);
+      // les plus anciennes partent par paquets (retirer une mesure à chaque mesure coûterait trop sur un téléphone)
+      if (journalJeu.mesures.length > 6000) journalJeu.mesures.splice(0, journalJeu.mesures.findIndex((m) => m[0] >= t - journalJeu.duree));
+      if (journalJeu.coups.length > 400) journalJeu.coups.splice(0, journalJeu.coups.findIndex((c) => c.t >= t - journalJeu.duree));
+    }
     function envoyerJournal() {
-      if (!journal) return flash(texte('Rien à envoyer pour l\'instant', 'appuie d\'abord sur « Réapprendre droite et gauche » et fais au moins le geste qui pose problème'), '');
-      const nom = 'gyro-apprentissage-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
-      const fichier = new File([JSON.stringify(journal)], nom, { type: 'application/json' });
+      if (!journal && !journalJeu.coups.length) return flash(texte('Rien à envoyer pour l\'instant', 'joue quelques coups, ou appuie sur « Réapprendre droite et gauche »'), '');
+      const nom = 'gyro-diagnostic-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
+      const contenu = { ...(journal || { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '' }), attente, seuil: seuilActuel, jeu: journalJeu };
+      const fichier = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
       // iPhone : feuille de partage (AirDrop vers le Mac, Mail…) ; sinon téléchargement
       if (navigator.canShare && navigator.canShare({ files: [fichier] })) return navigator.share({ files: [fichier], title: nom }).catch(() => {});
       const a = document.createElement('a'); a.href = URL.createObjectURL(fichier); a.download = nom; a.click();
@@ -96,9 +106,10 @@
     let dernierLateral = null;   // { t, sens } du dernier coup droite / gauche joué
     function jouer(t, sens) {
       const muet = dernierLateral && t - dernierLateral.t < RETOUR_MUET && sens.reduce((s, x, i) => s + x * dernierLateral.sens[i], 0) < 0;
-      if (muet) return;
+      if (muet) return noterJeu(t, null, { t: Math.round(t), rot: sens.map(Math.round), muet: 'retour latéral' });
       setTimeout(() => {
         const id = modele.classer(Gestes.resumer(historique.mesures, t, attente));
+        noterJeu(t, null, { t: Math.round(t), rot: sens.map(Math.round), geste: id, attente });
         const i = GESTES.findIndex((g) => g.id === id), g = GESTES[i];
         dernierLateral = id === 'droite' || id === 'gauche' ? { t, sens } : null;
         sonner(g, Apprentissage.force(historique.mesures, t, seuilActuel));
@@ -113,10 +124,10 @@
       const r = e.rotationRate;
       if (!r || ![r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return null;
       historique.ajouter(t, r, e.acceleration);
-      if (apprentissage && journal && journal.mesures.length < 30000) {
-        const m = historique.mesures[historique.mesures.length - 1];
-        journal.mesures.push([Math.round(t), m.rot.map((x) => Math.round(x * 10) / 10), m.acc.map((x) => Math.round(x * 100) / 100)]);
-      }
+      const derniere = historique.mesures[historique.mesures.length - 1];
+      const mesure = [Math.round(t), derniere.rot.map((x) => Math.round(x * 10) / 10), derniere.acc.map((x) => Math.round(x * 100) / 100)];
+      if (apprentissage && journal && journal.mesures.length < 30000) journal.mesures.push(mesure);
+      else if (!apprentissage && modele) noterJeu(t, mesure);
       if (declencheur.traiter(r, t)) {
         if (apprentissage) {
           if (apprentissage.ecoute(t)) {

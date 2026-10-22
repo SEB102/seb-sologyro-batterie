@@ -367,7 +367,7 @@ test('haut/bas par défaut : reconnaissent les vrais coups haut/bas d\'une autre
   assert.ok(total >= 15 && justes / total >= 0.95, `${justes}/${total}`);
 });
 
-// exemples haut/bas « par défaut » pour la simulation (les vrais sont propres à l'iPhone tenu debout)
+// exemples haut/bas « par défaut » pour la simulation (les vrais sont propres à l'iPhone de l'utilisateur et à sa prise en main)
 const defautSimule = () => exemples(['bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut', 'bas', 'haut'])
   .map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
 

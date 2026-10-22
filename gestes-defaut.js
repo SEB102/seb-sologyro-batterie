@@ -1,4 +1,4 @@
-// Exemples par défaut des 4 gestes : iPhone tenu debout dans le poing (22/10/2026). « bas » et « haut » appris à 15 h 39,
+// Exemples par défaut des 4 gestes : iPhone tenu à l'horizontale, grand côté vers le bas, écran tourné vers la droite (22/10/2026). « bas » et « haut » appris à 15 h 39,
 // « droite » et « gauche » à 15 h 58 ; 15 coups de chaque, retours et élans déjà écartés. Commun aux trois apps : rien à
 // apprendre pour jouer ; « Réapprendre droite et gauche » remplace les exemples par défaut de ces deux gestes.
 // { geste, t: instant du déclenchement (0), mesures: [{ t ms, rot [alpha, beta, gamma] °/s, acc [x, y, z] m/s² }] }
