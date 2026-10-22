@@ -9,7 +9,7 @@ Version « solo » de [SEB-GYROBATTERIE](https://github.com/SEB102/seb-gyrobatte
 Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-sologyro-batterie/**.
 
 1. **Toucher pour démarrer** : un seul toucher active le son et les mouvements (iPhone : autoriser « Mouvement »).
-2. **Rien à apprendre** : les 3 gestes sont fournis d'office. Pour les adapter à sa façon de jouer : « Réapprendre mes 3 gestes » (50 coups de chacun, guidés par des bips ; voir « Les 4 gestes »).
+2. **Rien à apprendre** : les 3 gestes sont fournis d'office. Pour les adapter à sa façon de jouer : « Réapprendre mes 3 gestes » (10 coups de chacun, guidés par des bips ; voir « Les 4 gestes »).
 3. Jouer. Ajouter la page à l'écran d'accueil pour l'avoir en un toucher (iPhone : Partager → « Sur l'écran d'accueil » ; Android : ⋮ → « Ajouter à l'écran d'accueil »).
 
 - **Sensibilité** (0 à 100 %, **80 % par défaut**) : 100 % = le geste le plus léger suffit.

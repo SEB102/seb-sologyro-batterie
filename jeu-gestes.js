@@ -22,7 +22,7 @@
   // parDefaut : exemples fournis d'office ({ geste, t, mesures })
   // gestes : ceux qui jouent (GESTES par défaut), avec leur son ; les exemples des autres sont ignorés, et gardés en mémoire
   // pour les apps qui les jouent (même mémoire pour les trois apps)
-  function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut: tousParDefaut = racine.GESTES_DEFAUT || [], gestes = GESTES }) {
+  function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut: tousParDefaut = racine.GESTES_DEFAUT || [], gestes = GESTES, parGeste = PAR_GESTE }) {
     const actifs = new Set(gestes.map((g) => g.id)), parDefaut = tousParDefaut.filter((e) => actifs.has(e.geste));
     const parDefautIds = new Set(parDefaut.map((e) => e.geste));
     // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend les 4
@@ -43,8 +43,8 @@
     const flash = (html, fond = '#234') => { $('flash').style.background = fond; $('flash').style.color = ''; $('flash').innerHTML = html; };
     const texte = (titre, detail = '', bas = '') => `<div style="font-size:20px;line-height:1.5">${titre}<br><span style="font-size:15px;font-weight:400;color:#bbb">${detail}</span>${bas}</div>`;
     const consigne = (e) => flash(texte(`Geste ${e.etape + 1} sur ${A_APPRENDRE.length} : ${e.geste.nom}`,
-      `${nomDuSon(e.geste, gestes.indexOf(e.geste))} · fais ${PAR_GESTE} coups variés (forts, doux, bras haut, bras bas)`,
-      `<div style="font-size:30px;margin-top:8px">${e.coups} / ${PAR_GESTE}</div>`));
+      `${nomDuSon(e.geste, gestes.indexOf(e.geste))} · fais ${parGeste} coups variés (forts, doux, bras haut, bras bas)`,
+      `<div style="font-size:30px;margin-top:8px">${e.coups} / ${parGeste}</div>`));
 
     function surEvenement(e) {
       if (e.type === 'preparation') flash(texte('Prépare-toi…', 'tiens le téléphone comme pour jouer'));
@@ -90,7 +90,7 @@
         colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [] };
       if (apprentissage) apprentissage.annuler();
       $('precision').hidden = true;
-      apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste: PAR_GESTE,
+      apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste,
         signaler: (e) => { if (journal) journal.evenements.push([Math.round(performance.now()), e.type, e.etape]); surEvenement(e); } });
     }
     function charger() {
