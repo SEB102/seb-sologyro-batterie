@@ -74,10 +74,19 @@
       $('precision').hidden = false;
       return true;
     }
-    function jouer(t) {
+    // Retour muet pour droite / gauche : le retour du poignet après un coup vers la droite est un mouvement vers la gauche,
+    // presque aussi vif que le coup (iPhone, 22/10/2026 : 0,13 à 0,73 s après le coup) ; il jouerait « Oh ! ». Après un coup
+    // droite ou gauche, un mouvement en sens INVERSE dans les RETOUR_MUET ms ne sonne donc pas, quel que soit le son reconnu.
+    // Haut et bas ne sont pas concernés (leurs retours sont nettement plus faibles et passent bien).
+    const RETOUR_MUET = 600;
+    let dernierLateral = null;   // { t, sens } du dernier coup droite / gauche joué
+    function jouer(t, sens) {
+      const muet = dernierLateral && t - dernierLateral.t < RETOUR_MUET && sens.reduce((s, x, i) => s + x * dernierLateral.sens[i], 0) < 0;
+      if (muet) return;
       setTimeout(() => {
         const id = modele.classer(Gestes.resumer(historique.mesures, t, attente));
         const i = GESTES.findIndex((g) => g.id === id), g = GESTES[i];
+        dernierLateral = id === 'droite' || id === 'gauche' ? { t, sens } : null;
         sonner(g, Apprentissage.force(historique.mesures, t, seuilActuel));
         $('flash').textContent = nomDuSon(g, i).toUpperCase();
         $('flash').style.background = g.couleur; $('flash').style.color = '#111';
@@ -105,7 +114,7 @@
               if (journal) journal.decisions.push({ t: Math.round(t), etape, repos, resultat, sens: Apprentissage.sensDuCoup(mesures, t).map(Math.round) });
             }, FENETRE + 20);
           }
-        } else if (modele) jouer(t);
+        } else if (modele) jouer(t, [r.alpha || 0, r.beta || 0, r.gamma || 0]);
       }
       return Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0);
     }

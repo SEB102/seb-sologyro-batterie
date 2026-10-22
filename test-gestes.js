@@ -239,19 +239,20 @@ test('apprentissage : le jeu de 4 gestes appris (retours ignorés) reconnaît dr
 function jeuSimule() {
   const vm = require('vm'), fs = require('fs');
   let horloge = 0; const file = [];
-  const ctx = { performance: { now: () => horloge }, setTimeout: (f, ms) => file.push([horloge + ms, f]), clearTimeout() {}, localStorage: { getItem: () => null, setItem() {} }, Math, JSON };
+  const ctx = { performance: { now: () => horloge }, setTimeout: (f, ms) => file.push([horloge + ms, f]), clearTimeout() {}, localStorage: { m: {}, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = String(v); } }, Math, JSON };
   ctx.window = ctx; vm.createContext(ctx);
   for (const f of ['gestes.js', 'apprentissage.js', 'jeu-gestes.js']) vm.runInContext(fs.readFileSync(__dirname + '/' + f, 'utf8').replace(/typeof module !== 'undefined'/g, 'false'), ctx);
   const elements = {}, $ = (id) => (elements[id] = elements[id] || { style: {}, innerHTML: '', textContent: '', hidden: false, querySelectorAll: () => [] });
   const bips = [];
-  const jeu = ctx.JeuGestes.creerJeu({ $, seuil: 216, sonner() {}, biper: (b) => bips.push(b) });
+  const sortie = { sonner() {} };
+  const jeu = ctx.JeuGestes.creerJeu({ $, seuil: 216, sonner: (g, f) => sortie.sonner(g, f), biper: (b) => bips.push(b) });
   const avancer = (t) => { for (;;) { file.sort((a, b) => a[0] - b[0]); if (!file.length || file[0][0] > t) break; const [q, f] = file.shift(); horloge = q; f(); } horloge = t; };
   const mouvement = (rot, acc = [0, 0, 0]) => jeu.surMouvement({ rotationRate: { alpha: rot[0], beta: rot[1], gamma: rot[2] }, acceleration: { x: acc[0], y: acc[1], z: acc[2] } }, horloge);
   // joue des échantillons (t relatif) à partir de maintenant
   // arret() vrai → on s'arrête (comme l'utilisateur aux 2 bips de fin de geste)
   const jouer = (ech, arret = () => false) => { const h0 = horloge; for (const e of ech) { if (arret()) break; avancer(h0 + e.t); mouvement(e.rot, e.acc); } };
   const finDeGeste = () => { const n = bips.filter((b) => b === 'gesteFini' || b === 'fin').length; return () => bips.filter((b) => b === 'gesteFini' || b === 'fin').length > n; };
-  return { jeu, bips, avancer, jouer, finDeGeste, get horloge() { return horloge; } };
+  return { jeu, bips, avancer, jouer, finDeGeste, get horloge() { return horloge; }, set sonner(f) { sortie.sonner = f; } };
 }
 
 test('apprentissage : 15 petits bips par geste (le 15e suivi des 2 bips de fin de geste)', () => {
@@ -312,6 +313,40 @@ test('vrai apprentissage iPhone : l\'élan (plus lent, en sens inverse) ne fixe 
     const perdus = ecartes.filter((c) => dot(c) > 0 && force(c) > 0.6 * force(vifs[3]) && c.resultat !== 'deborde' && c.resultat !== 'pasDeRepos');
     assert.strictEqual(perdus.length, 0, `${geste} : ${perdus.length} coup(s) vif(s) écarté(s)`);
   }
+});
+
+// ---- Jeu : retour muet pour droite / gauche ----
+// Apprend les 4 gestes simulés dans le vrai jeu-gestes.js, puis joue ; renvoie les gestes sonnés
+function jeuAppris() {
+  const s = jeuSimule(), sons = [];
+  s.sonner = (g) => sons.push(g.id);
+  s.jeu.apprendre(); s.avancer(1700);
+  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  // téléphone immobile 3 s (un vrai téléphone envoie ses mesures en continu)
+  const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
+  s.jouer(immobile);
+  return { s, sons };
+}
+
+test('jeu : le retour du poignet après un coup vers la droite (ou la gauche) ne sonne pas (5 séances de 6 coups avec retours rapides)', () => {
+  let enTrop = 0, justes = 0;
+  for (let k = 0; k < 5; k++) {
+    const { s, sons } = jeuAppris(), seq = ['droite', 'droite', 'droite', 'gauche', 'gauche', 'gauche'];
+    sons.length = 0; s.jouer(seance(seq, { retour: 1 }).ech); s.avancer(s.horloge + 1000);
+    enTrop += Math.max(0, sons.length - seq.length); justes += seq.filter((g, i) => sons[i] === g).length;
+  }
+  // sans retour muet, les 30 retours sonnaient tous ; il en reste quelques-uns, quand le coup lui-même a été mal reconnu
+  assert.ok(enTrop <= 5, enTrop + ' retour(s) ont sonné');
+  assert.ok(justes >= 25, justes + '/30 coups justes');
+});
+
+test('jeu : droite puis gauche à une seconde d\'intervalle (sans retour) sonnent tous les deux ; haut et bas inchangés', () => {
+  const { s, sons } = jeuAppris();
+  sons.length = 0; s.jouer(seance(['droite', 'gauche', 'droite', 'gauche', 'bas', 'haut', 'bas', 'haut']).ech); s.avancer(s.horloge + 1000);
+  // aucun son perdu (le retour muet ne touche pas un vrai coup donné une seconde plus tard), et presque tous justes
+  const attendu = ['droite', 'gauche', 'droite', 'gauche', 'bas', 'haut', 'bas', 'haut'];
+  assert.strictEqual(sons.length, 8, sons.join(' '));
+  assert.ok(attendu.filter((g, i) => sons[i] === g).length >= 7, sons.join(' '));
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
