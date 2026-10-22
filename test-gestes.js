@@ -126,6 +126,46 @@ test('cas limites : un seul exemple, aucun exemple, mesures absentes', () => {
   assert.strictEqual(G.evaluer([], 30).precision, 0);
 });
 
+// ---- Geste en deux élans (hésitation au milieu) ----
+// Vitesse de rotation autour d'un seul axe, bosses successives : [début ms, durée ms, sommet °/s (signe = sens)]
+function bosses(liste, hz = 60) {
+  const fin = Math.max(...liste.map(([d, l]) => d + l)) + 300, ech = [];
+  for (let t = 0; t < fin; t += 1000 / hz) {
+    let w = 0; for (const [d, l, s] of liste) if (t >= d && t <= d + l) w += s * Math.sin(Math.PI * (t - d) / l);
+    ech.push({ t, rot: [0, 0, w + entre(-3, 3)], acc: [0, 0, 0] });
+  }
+  return ech;
+}
+const compterBosses = (liste) => { const d = G.creerDeclencheur(); let n = 0; for (const e of bosses(liste)) if (d.traiter(e.rot, e.t)) n++; return n; };
+
+test('détection : un geste qui hésite au milieu puis repart dans le même sens ne compte qu\'une fois', () => {
+  // profil relevé sur iPhone le 21/10 : 366 °/s, creux à 116 °/s, puis 632 °/s dans le même sens
+  assert.strictEqual(compterBosses([[0, 130, 366], [120, 200, 632]]), 1);
+});
+
+test('détection : deux coups dans le même sens séparés par un retour comptent deux fois, même vite (le retour est aussi un mouvement détecté)', () => {
+  assert.strictEqual(compterBosses([[0, 120, 600], [130, 120, -500], [260, 120, 600]]), 3);   // coup, retour, coup : ~4 coups/s
+  // mouvements de 110 ms (environ 4 coups par seconde avec retour) : limite du détecteur avant cette correction, à garder
+  assert.strictEqual(compterBosses([0, 1, 2, 3, 4].map((k) => [k * 115, 110, k % 2 ? -500 : 600])), 5);
+});
+
+test('détection : coup puis un autre dans une autre direction, sans retour → les deux comptent', () => {
+  const d = G.creerDeclencheur(); let n = 0;
+  for (const e of bosses([[0, 130, 600]])) if (d.traiter(e.rot, e.t)) n++;
+  for (const e of bosses([[0, 130, 600]])) if (d.traiter([e.rot[2], 0, 0], e.t + 450)) n++;   // vers un autre axe, 450 ms après
+  assert.strictEqual(n, 2);
+});
+
+test('vraies mesures iPhone : le geste en deux élans de 21 383/21 533 ms n\'est plus compté deux fois', () => {
+  const vrai = require('./mesures-iphone.json').mesures, d = G.creerDeclencheur({ seuil: 216 }), t = [];
+  for (const e of vrai) if (d.traiter(e[1], e[0])) t.push(e[0]);
+  assert.ok(t.includes(21383) && !t.includes(21533), t.join(' '));
+  // 26 266/26 500 ms : le 2e élan part ~65° à côté du premier (geste qui tourne) ; il reste compté à part, pour ne jamais
+  // fusionner deux vrais coups dans des directions voisines quand l'inclinaison du téléphone change
+  // les autres détections ne bougent pas
+  for (const x of [18417, 18866, 19467, 19850, 21966, 22516, 22900, 23483, 23966, 25816, 27133, 27567]) assert.ok(t.includes(x), x + ' a disparu : ' + t.join(' '));
+});
+
 // ---- Apprentissage guidé (apprentissage.js) ----
 const A = require('./apprentissage.js');
 // Joue une séance d'apprentissage simulée comme la page : détection, puis coup transmis après la fenêtre de mesure

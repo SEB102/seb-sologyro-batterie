@@ -84,11 +84,19 @@
   // (mesuré sur iPhone). Pour un mouvement inverse, le seuil est donc relevé à 80 % de la force du coup précédent puis
   // redescend en ~200 ms à partir de la FIN du coup : le rebond ne compte pas, un vrai coup en sens inverse aussi fort passe. Deux coups rapides
   // dans le même sens ne sont pas freinés.
-  function creerDeclencheur({ seuil = 216, rearmement = 80, chute = 1 / 3, pause = 80, rebond = 0.8, oubli = 200 } = {}) {
+  // Geste en deux élans : un geste qui ralentit au milieu puis repart dans le même sens (vu sur iPhone : 366 °/s, creux à
+  // 116 °/s, puis 632 °/s) passerait pour deux coups. Pour frapper deux fois dans le même sens il faut ramener le poignet
+  // entre les deux : un nouvel élan dans le même sens sans au moins « retourMin » degrés de rotation inverse depuis le coup
+  // est donc la suite du même geste (pas de nouveau coup), tant que « suite » ms ne se sont pas écoulées depuis sa fin.
+  function creerDeclencheur({ seuil = 216, rearmement = 80, chute = 1 / 3, pause = 80, rebond = 0.8, oubli = 200, retourMin = 4, suite = 500 } = {}) {
     let arme = true, dernier = -Infinity, finCoup = -Infinity, pic = 0, picPrecedent = 0, sens = null, sensPrecedent = null;
+    let tPrec = null, axeCoup = null, angleInverse = 0;
     return {
       traiter(rot, t) {
         const r = vecteur(rot, ['alpha', 'beta', 'gamma']), v = Math.hypot(r[0], r[1], r[2]);
+        const dt = tPrec === null ? 0 : Math.min(0.1, Math.max(0, (t - tPrec) / 1000)); tPrec = t;
+        const c = axeCoup ? r[0] * axeCoup[0] + r[1] * axeCoup[1] + r[2] * axeCoup[2] : 0;   // vitesse le long du dernier coup
+        if (c < 0) angleInverse -= c * dt;
         if (!arme) {
           if (v > pic) { pic = v; sens = r; }
           if (t - dernier >= pause && (v < rearmement || v < pic * chute)) { arme = true; finCoup = t; picPrecedent = pic; sensPrecedent = sens; }
@@ -96,7 +104,14 @@
         }
         const inverse = sensPrecedent && r[0] * sensPrecedent[0] + r[1] * sensPrecedent[1] + r[2] * sensPrecedent[2] < 0;
         const seuilDuMoment = inverse ? Math.max(seuil, rebond * picPrecedent * Math.exp(-(t - finCoup) / oubli)) : seuil;
-        if (v > seuilDuMoment) { arme = false; dernier = t; pic = v; sens = r; return true; }
+        if (v > seuilDuMoment) {
+          if (c > 0.7 * v && angleInverse < retourMin && t - finCoup < suite) {   // même sens, sans retour : suite du même geste
+            arme = false; dernier = t; pic = Math.max(picPrecedent, v);
+            return false;
+          }
+          arme = false; dernier = t; pic = v; sens = r; axeCoup = r.map((x) => x / v); angleInverse = 0;
+          return true;
+        }
         return false;
       },
     };
