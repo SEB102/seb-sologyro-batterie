@@ -1,5 +1,5 @@
-// Partie commune aux pages du téléphone (identique dans les trois apps) : apprentissage guidé des gestes qui n'ont pas
-// d'exemples par défaut (gestes-defaut.js fournit haut et bas : on n'apprend plus que droite et gauche), choix de l'attente, jeu. La page dit seulement où sonne le son :
+// Partie commune aux pages du téléphone (identique dans les trois apps) : exemples par défaut des gestes (gestes-defaut.js),
+// apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage de droite et gauche), choix de l'attente, jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
 //   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
 // Il faut gestes.js, apprentissage.js (et gestes-defaut.js) avant ce fichier.
@@ -17,12 +17,19 @@
   const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
   // nomDuSon(geste, i) : nom affiché (version multi : le son choisi sur l'ordinateur pour ce téléphone)
-  // parDefaut : exemples fournis d'office ({ geste, t, mesures }) ; leurs gestes ne sont pas réappris
+  // parDefaut : exemples fournis d'office ({ geste, t, mesures })
   function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut = racine.GESTES_DEFAUT || [] }) {
     const parDefautIds = new Set(parDefaut.map((e) => e.geste));
-    const A_APPRENDRE = GESTES.filter((g) => !parDefautIds.has(g.id));
-    // exemples du jeu = ceux par défaut + ceux appris (un ancien apprentissage des 4 gestes ne garde que les gestes à apprendre)
-    const tousLesExemples = (appris) => [...parDefaut, ...(appris || []).filter((e) => !parDefautIds.has(e.geste))];
+    // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend droite et gauche
+    const sansDefaut = GESTES.filter((g) => !parDefautIds.has(g.id));
+    const A_APPRENDRE = sansDefaut.length ? sansDefaut : GESTES.filter((g) => g.id === 'droite' || g.id === 'gauche');
+    const aApprendre = new Set(A_APPRENDRE.map((g) => g.id));
+    // exemples du jeu : ceux appris pour les gestes à apprendre remplacent les exemples par défaut de ces gestes ;
+    // un ancien apprentissage des 4 gestes ne garde que ses gestes à apprendre
+    const tousLesExemples = (appris) => {
+      const gardes = (appris || []).filter((e) => aApprendre.has(e.geste)), remplaces = new Set(gardes.map((e) => e.geste));
+      return [...parDefaut.filter((e) => !remplaces.has(e.geste)), ...gardes];
+    };
     const historique = Gestes.creerHistorique(800);
     let declencheur = Gestes.creerDeclencheur({ seuil }), seuilActuel = seuil;
     let apprentissage = null, modele = null, attente = 30, timerFlash;
@@ -72,7 +79,7 @@
     }
     function charger() {
       const m = lire(), exemples = tousLesExemples(m.exemples);
-      if (!A_APPRENDRE.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
+      if (!GESTES.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
       const { precisions, attente: choix } = Apprentissage.choisirAttente(exemples);
       attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : choix;
       modele = Gestes.entrainer(exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
@@ -127,7 +134,7 @@
     }
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
-    function commencer() { if (charger()) flash(texte('Joue !', 'tes gestes appris sont repris'), ''); else apprendre(); }
+    function commencer() { if (charger()) flash(texte('Joue !', 'les 4 gestes sont prêts'), ''); else apprendre(); }
     return { surMouvement, apprendre, charger, commencer, changerSeuil, get enApprentissage() { return !!apprentissage; }, A_APPRENDRE,
       exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }

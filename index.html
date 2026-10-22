@@ -50,7 +50,7 @@
 </head>
 <body>
 <h1>SEB-SOLOGYRO-BATTERIE</h1>
-<div id="etat">Haut et bas sont prêts ; le téléphone apprend droite et gauche, puis joue lui-même le son de chacun.</div>
+<div id="etat">Les 4 gestes sont prêts dès le départ ; le téléphone joue lui-même le son de chacun.</div>
 <div class="gestes">
   <div style="--c:#e8643c"><b>↓ coup vers le bas</b>grosse caisse</div>
   <div style="--c:#e8c43c"><b>↑ coup vers le haut</b>cymbale</div>
@@ -78,19 +78,19 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-22h</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-22i</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261022h"></script>
-<script src="sons.js?v=20261022h"></script>
-<script src="gestes.js?v=20261022h"></script>
-<script src="apprentissage.js?v=20261022h"></script>
-<script src="gestes-defaut.js?v=20261022h"></script>
-<script src="jeu-gestes.js?v=20261022h"></script>
+<script src="detecteur.js?v=20261022i"></script>
+<script src="sons.js?v=20261022i"></script>
+<script src="gestes.js?v=20261022i"></script>
+<script src="apprentissage.js?v=20261022i"></script>
+<script src="gestes-defaut.js?v=20261022i"></script>
+<script src="jeu-gestes.js?v=20261022i"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
