@@ -1,7 +1,7 @@
 // Partie commune aux pages du téléphone (identique dans les trois apps) : apprentissage guidé des 4 gestes,
 // choix de l'attente, puis jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
-//   biper(type)          : 'debut' (1 bip) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
+//   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
 // Il faut gestes.js et apprentissage.js avant ce fichier.
 (function (racine) {
   const GESTES = [
@@ -32,7 +32,7 @@
     function surEvenement(e) {
       if (e.type === 'preparation') flash(texte('Prépare-toi…', 'tiens le téléphone comme pour jouer'));
       if (e.type === 'debut') { consigne(e); biper('debut'); }
-      if (e.type === 'coup') consigne(e);
+      if (e.type === 'coup') { consigne(e); biper('coup'); }   // on entend chaque coup compté, sans regarder l'écran
       if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('gesteFini'); }
       if (e.type === 'fin') {
         biper('fin');
