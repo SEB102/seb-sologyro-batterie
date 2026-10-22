@@ -54,8 +54,8 @@
 <div id="etat">Les 3 gestes sont prêts dès le départ ; le téléphone joue lui-même le son de chacun.</div>
 <div class="gestes">
   <div style="--c:#e8643c"><b>↓ coup vers le bas</b>grosse caisse</div>
-  <div style="--c:#e8c43c"><b>↑ coup vers le haut</b>caisse claire</div>
-  <div style="--c:#4c9be8"><b>← coup vers la gauche</b>cymbale</div>
+  <div style="--c:#e8c43c"><b>↑ coup vers le haut</b>cymbale</div>
+  <div style="--c:#4c9be8"><b>← coup vers la gauche</b>caisse claire</div>
 </div>
 <button id="demarrer">Toucher pour démarrer</button>
 <div id="flash">—</div>
@@ -81,19 +81,19 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-22s</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-22t</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261022s"></script>
-<script src="sons.js?v=20261022s"></script>
-<script src="gestes.js?v=20261022s"></script>
-<script src="apprentissage.js?v=20261022s"></script>
-<script src="gestes-defaut.js?v=20261022s"></script>
-<script src="jeu-gestes.js?v=20261022s"></script>
+<script src="detecteur.js?v=20261022t"></script>
+<script src="sons.js?v=20261022t"></script>
+<script src="gestes.js?v=20261022t"></script>
+<script src="apprentissage.js?v=20261022t"></script>
+<script src="gestes-defaut.js?v=20261022t"></script>
+<script src="jeu-gestes.js?v=20261022t"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -119,12 +119,9 @@ function bip(frequence = 880, debut = 0, duree = 0.09) {
 const BIPS = { debut: () => bip(880), coup: () => bip(1320, 0, 0.04), gesteFini: () => { bip(660, 0.15); bip(660, 0.31); }, fin: () => { bip(523, 0.15); bip(659, 0.3); bip(784, 0.45, 0.18); } };   // après le petit bip du dernier coup
 
 // ---- Gestes : apprentissage guidé puis jeu (jeu-gestes.js, commun aux trois apps) ----
-const SONS_SOLO = { haut: 'Caisse claire', gauche: 'Cymbale' };
 const jeu = JeuGestes.creerJeu({
   $, seuil: reglages.seuil, biper: (type) => BIPS[type](),
-  // SOLO : cymbale et caisse claire inversées par rapport aux deux autres apps (haut → caisse claire, gauche → cymbale)
-  nomDuSon: (geste) => SONS_SOLO[geste.id] || geste.son,
-  sonner(geste, force) { if (ctx.state !== 'running') reactiverSon(); sons.instruments[SONS_SOLO[geste.id] || geste.son](force); },   // au cas où l'iPhone l'aurait coupé
+  sonner(geste, force) { if (ctx.state !== 'running') reactiverSon(); sons.instruments[geste.son](force); },   // au cas où l'iPhone l'aurait coupé
 });
 
 // ---- Sensibilité (curseur à droite = gestes plus légers) ----
