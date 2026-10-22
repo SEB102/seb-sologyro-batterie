@@ -12,12 +12,9 @@
   ];
   const PAR_GESTE = 15, FENETRE = 200;   // ms de mesures gardées après chaque coup
   // Mêmes gestes pour les trois apps (même adresse seb102.github.io) : appris une fois, valables partout
-  // gyro-gestes-5 : apprentissages avec mouvements « rien » (les anciens, sans « rien », ne sont pas repris : on repart des
-  // exemples par défaut)
+  // gyro-gestes-5 : dernière mémoire en date (gyro-gestes-4 contient encore l'apprentissage du 22/10 16 h 44, « droite » à l'envers) ;
+  // les mouvements « rien » qu'elle contient sont ignorés
   const CLE = 'gyro-gestes-5';
-  // attente minimale choisie d'office : avec « rien », 30 ms font passer les mouvements à ignorer qui sonnent de 10 % à 4 %
-  // (5 séances iPhone du 22/10) ; on peut toujours choisir 0 ms à la main
-  const ATTENTE_MIN = 30;
   const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || '{}'); } catch { return {}; } };
   const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
@@ -29,16 +26,11 @@
     const sansDefaut = GESTES.filter((g) => !parDefautIds.has(g.id));
     const A_APPRENDRE = sansDefaut.length ? sansDefaut : GESTES;
     const aApprendre = new Set(A_APPRENDRE.map((g) => g.id));
-    // exemples du jeu : ceux appris pour les gestes à apprendre remplacent les exemples par défaut de ces gestes ; les
-    // mouvements « rien » appris s'ajoutent à ceux par défaut (élans, retours et réajustements varient d'une séance à l'autre)
-    const tousLesExemples = (appris, rienAppris) => {
+    // exemples du jeu : ceux appris pour les gestes à apprendre remplacent les exemples par défaut de ces gestes ;
+    // un ancien apprentissage des 4 gestes ne garde que ses gestes à apprendre
+    const tousLesExemples = (appris) => {
       const gardes = (appris || []).filter((e) => aApprendre.has(e.geste)), remplaces = new Set(gardes.map((e) => e.geste));
-      return [...parDefaut.filter((e) => !remplaces.has(e.geste)), ...gardes, ...(rienAppris || [])];
-    };
-    // attente choisie d'office : la plus courte, d'au moins ATTENTE_MIN, qui reconnaît 95 % des exemples (sinon la meilleure)
-    const attenteConseillee = (precisions) => {
-      const options = Apprentissage.ATTENTES.map((a, i) => ({ a, p: precisions[i] })).filter((o) => o.a >= ATTENTE_MIN);
-      return (options.find((o) => o.p >= 95) || options.reduce((x, y) => (y.p > x.p ? y : x))).a;
+      return [...parDefaut.filter((e) => !remplaces.has(e.geste)), ...gardes];
     };
     const historique = Gestes.creerHistorique(800);
     let declencheur = Gestes.creerDeclencheur({ seuil }), seuilActuel = seuil;
@@ -61,9 +53,10 @@
         biper('coup'); biper('fin');
         if (journal) journal.fin = Math.round(performance.now());
         apprentissage = null;
-        ecrire({ exemples: e.exemples, rien: e.rien });
+        const { precisions, attente: choix } = Apprentissage.choisirAttente(tousLesExemples(e.exemples));   // avec haut/bas par défaut
+        ecrire({ exemples: e.exemples, attente: choix });
         charger();
-        flash(texte('Appris !', `${precisionsAffichees[Apprentissage.ATTENTES.indexOf(attente)]} % de gestes reconnus avec ${attente} ms d'attente · à toi de jouer`), '');
+        flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus avec ${choix} ms d'attente · à toi de jouer`), '');
       }
     }
     // Diagnostic : mesures brutes et décisions du dernier apprentissage, et de la dernière minute et demie de jeu (sons joués,
@@ -96,19 +89,14 @@
       apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste: PAR_GESTE,
         signaler: (e) => { if (journal) journal.evenements.push([Math.round(performance.now()), e.type, e.etape]); surEvenement(e); } });
     }
-    let precisionsAffichees = [], dernierCalcul = {};
     function charger() {
-      const m = lire(), exemples = tousLesExemples(m.exemples, m.rien);
+      const m = lire(), exemples = tousLesExemples(m.exemples);
       if (!GESTES.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
-      // calcul de précision (≈ 0,1 s pour 500 exemples) fait une fois par jeu d'exemples, pas à chaque clic
-      const cleCalcul = exemples.length + ':' + exemples.reduce((s, e) => s + e.mesures.length, 0);
-      if (cleCalcul !== dernierCalcul.cle) dernierCalcul = { cle: cleCalcul, precisions: Apprentissage.choisirAttente(exemples).precisions };
-      const { precisions } = dernierCalcul;
-      precisionsAffichees = precisions;
-      attente = Apprentissage.ATTENTES.includes(m.attenteChoisie) ? m.attenteChoisie : attenteConseillee(precisions);
+      const { precisions, attente: choix } = Apprentissage.choisirAttente(exemples);
+      attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : choix;
       modele = Gestes.entrainer(exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
       $('attentes').innerHTML = Apprentissage.ATTENTES.map((a, i) => `<button data-a="${a}" class="${a === attente ? 'actif' : ''}">${a} ms<br>${precisions[i]} %</button>`).join('');
-      $('attentes').querySelectorAll('button').forEach((b) => (b.onclick = () => { const o = lire(); o.attenteChoisie = Number(b.dataset.a); ecrire(o); charger(); }));
+      $('attentes').querySelectorAll('button').forEach((b) => (b.onclick = () => { const o = lire(); o.attente = Number(b.dataset.a); ecrire(o); charger(); }));
       $('precision').hidden = false;
       return true;
     }
@@ -125,7 +113,6 @@
       setTimeout(() => {
         const id = modele.classer(Gestes.resumer(historique.mesures, t, attente));
         noterJeu(t, null, { t: Math.round(t), rot: sens.map(Math.round), geste: id, attente });
-        if (id === 'rien') return;   // élan, retour, réajustement… : reconnu comme tel, il ne sonne pas
         const i = GESTES.findIndex((g) => g.id === id), g = GESTES[i];
         dernierLateral = id === 'droite' || id === 'gauche' ? { t, sens } : null;
         sonner(g, Apprentissage.force(historique.mesures, t, seuilActuel));

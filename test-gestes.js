@@ -317,13 +317,11 @@ test('vrai apprentissage iPhone : l\'élan (plus lent, en sens inverse) ne fixe 
 
 // ---- Jeu : retour muet pour droite / gauche ----
 // Apprend les 4 gestes simulés dans le vrai jeu-gestes.js, puis joue ; renvoie les gestes sonnés
-// retours à la moitié de la vitesse du coup pendant l'apprentissage (sur iPhone : 0,3 à 1 fois). Des retours parfaitement
-// symétriques seraient identiques aux coups du geste inverse : appris comme « rien », ils feraient taire ces coups.
 function jeuAppris() {
   const s = jeuSimule(), sons = [];
   s.sonner = (g) => sons.push(g.id);
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 0.5 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   // téléphone immobile 3 s (un vrai téléphone envoie ses mesures en continu)
   const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
   s.jouer(immobile);
@@ -354,8 +352,8 @@ test('jeu : droite puis gauche à une seconde d\'intervalle (sans retour) sonnen
 // ---- Haut / bas par défaut (gestes-defaut.js : vrais coups iPhone du 22/10/2026, 15 h 39) ----
 test('haut/bas par défaut : reconnaissent les vrais coups haut/bas d\'une autre séance (22/10, 15 h 19)', () => {
   const D = require('./gestes-defaut.js');
-  // modèle sans les exemples tirés de cette séance-là (15 h 19), ni « rien » : reconnaissance des seuls vrais coups
-  const modele = G.entrainer(D.filter((e) => e.s !== '15h19' && e.geste !== 'rien').map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 30) })));
+  assert.deepStrictEqual(['bas', 'haut'].map((g) => D.filter((e) => e.geste === g).length), [15, 15]);
+  const modele = G.entrainer(D.map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 30) })));
   // coups vifs haut/bas de l'autre séance (les 4 plus vifs de chaque geste donnent le sens, puis tous ceux qui vont dans ce sens)
   let justes = 0, total = 0;
   for (const { geste, coups } of rejouerApprentissageReel().filter((x) => x.geste === 'bas' || x.geste === 'haut')) {
@@ -378,7 +376,7 @@ test('haut/bas par défaut : l\'apprentissage ne demande que droite et gauche (2
   s.sonner = (g) => sons.push(g.id);
   assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'droite gauche');
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of ['droite', 'gauche']) { s.jouer(seance(Array(17).fill(g), { retour: 0.5 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of ['droite', 'gauche']) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   const n = (b) => s.bips.filter((x) => x === b).length;
   assert.deepStrictEqual([n('debut'), n('coup'), n('gesteFini'), n('fin')], [2, 30, 1, 1], s.bips.join(' '));
   const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
@@ -398,36 +396,10 @@ test('haut/bas par défaut : sans rien d\'appris, il faut apprendre droite/gauch
   assert.strictEqual(s.jeu.charger(), true);
 });
 
-test('exemples par défaut (5 séances iPhone du 22/10) : chaque séance, reconnue avec ce qui a été appris sur les 4 autres → ≥ 85 % de vrais coups justes, ≤ 8 % de mouvements « rien » qui sonnent', () => {
+test('4 gestes par défaut (vrais coups iPhone du 22/10) : 15 de chaque, bien distingués entre eux', () => {
   const D = require('./gestes-defaut.js');
-  assert.ok(QUATRE.every((g) => D.filter((e) => e.geste === g).length >= 50) && D.filter((e) => e.geste === 'rien').length >= 200);
-  let justes = 0, coups = 0, sonnent = 0, rien = 0; const detail = [];
-  for (const seance of [...new Set(D.map((e) => e.s))]) {
-    const mod = G.entrainer(D.filter((e) => e.s !== seance).map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 30) })));
-    let a = 0, b = 0, c = 0, d = 0;
-    for (const e of D.filter((e) => e.s === seance)) { const p = mod.classer(G.resumer(e.mesures, e.t, 30));
-      if (e.geste === 'rien') { d++; if (p !== 'rien') c++; } else { b++; if (p === e.geste) a++; } }
-    justes += a; coups += b; sonnent += c; rien += d; detail.push(`${seance} ${a}/${b} · ${c}/${d}`);
-  }
-  console.log('      ' + detail.join(' | '));
-  assert.ok(justes / coups >= 0.85, `vrais coups justes ${justes}/${coups}`);
-  assert.ok(sonnent / rien <= 0.08, `« rien » qui sonnent ${sonnent}/${rien}`);
-});
-
-test('jeu : un mouvement reconnu « rien » ne sonne pas, et les vrais coups sonnent', () => {
-  // « rien » simulé : petits mouvements lents de travers (réajustements)
-  const reajuster = () => { const ech = []; const u = unite([entre(-1, 1), 1, entre(-1, 1)]); for (let t = 0; t < 700; t += 1000 / 60) { const x = t - 200, w = x > 0 && x < 300 ? 260 * Math.sin(Math.PI * x / 300) : 0; ech.push({ t, rot: u.map((c) => c * w + entre(-3, 3)), acc: [0, 0, 0] }); } return ech; };
-  const unite = (v) => { const n = Math.hypot(...v); return v.map((x) => x / n); };
-  const rien = []; for (let k = 0; k < 20; k++) { const ech = reajuster(), i = ech.findIndex((e) => Math.hypot(...e.rot) > 216); if (i > 0) rien.push({ geste: 'rien', t: ech[i].t, mesures: ech }); }
-  const defaut = [...exemples(Array.from({ length: 60 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures })), ...rien];
-  const s = jeuSimule(defaut), sons = [];
-  s.sonner = (g) => sons.push(g.id);
-  assert.strictEqual(s.jeu.charger(), true);
-  for (let k = 0; k < 5; k++) s.jouer(reajuster());
-  s.avancer(s.horloge + 500);
-  assert.ok(sons.length <= 1, '« rien » a sonné : ' + sons.join(' '));
-  sons.length = 0; s.jouer(seance(['bas', 'haut', 'droite', 'gauche']).ech); s.avancer(s.horloge + 800);
-  assert.ok(sons.length >= 3, 'vrais coups : ' + sons.join(' '));
+  assert.strictEqual(QUATRE.map((g) => D.filter((e) => e.geste === g).length).join(' '), '15 15 15 15');
+  assert.ok(G.evaluer(D, 30).precision >= 0.95, Math.round(G.evaluer(D, 30).precision * 100) + ' %');
 });
 
 test('4 gestes par défaut : on joue sans rien apprendre ; « Réapprendre » refait les 4 gestes, qui remplacent les exemples par défaut', () => {
@@ -437,7 +409,7 @@ test('4 gestes par défaut : on joue sans rien apprendre ; « Réapprendre » re
   assert.strictEqual(s.jeu.charger(), true);   // rien à apprendre
   assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'bas haut droite gauche');
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 0.5 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 60, s.bips.join(' '));
   const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-5'));
   assert.strictEqual([...new Set(stocke.exemples.map((e) => e.geste))].join(' '), 'bas haut droite gauche');
@@ -489,6 +461,19 @@ test('moment du son « arrêt » : le son part à l\'arrêt (après le sommet), 
   s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
   assert.ok(attendu.filter((g, i) => sons[i] === g).length >= 7, sons.join(' '));
+});
+
+test('mémoire enregistrée par la version avec « rien » (22/10, 2026-10-22l) : ses 4 gestes appris sont repris, ses « rien » ignorés', () => {
+  const defaut = exemples(Array.from({ length: 60 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
+  const s = jeuSimule(defaut), sons = [];
+  s.sonner = (g) => sons.push(g.id);
+  const appris = exemples(Array.from({ length: 60 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
+  // des « rien » qui ressemblent à de vrais coups : s'ils étaient pris en compte, ces coups se tairaient
+  const rien = exemples(['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche']).map((e) => ({ geste: 'rien', t: e.t, mesures: e.mesures }));
+  s.stockage.setItem('gyro-gestes-5', JSON.stringify({ exemples: appris, rien, attenteChoisie: 0 }));
+  assert.strictEqual(s.jeu.charger(), true);
+  s.jouer(seance(['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche']).ech); s.avancer(s.horloge + 1000);
+  assert.strictEqual(sons.length, 8, sons.join(' '));
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
