@@ -1,5 +1,5 @@
 // Partie commune aux pages du téléphone (identique dans les trois apps) : exemples par défaut des gestes (gestes-defaut.js),
-// apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage de droite et gauche), choix de l'attente, jeu. La page dit seulement où sonne le son :
+// apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage des 4), choix de l'attente, moment du son, jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
 //   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
 // Il faut gestes.js, apprentissage.js (et gestes-defaut.js) avant ce fichier.
@@ -20,9 +20,9 @@
   // parDefaut : exemples fournis d'office ({ geste, t, mesures })
   function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut = racine.GESTES_DEFAUT || [] }) {
     const parDefautIds = new Set(parDefaut.map((e) => e.geste));
-    // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend droite et gauche
+    // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend les 4
     const sansDefaut = GESTES.filter((g) => !parDefautIds.has(g.id));
-    const A_APPRENDRE = sansDefaut.length ? sansDefaut : GESTES.filter((g) => g.id === 'droite' || g.id === 'gauche');
+    const A_APPRENDRE = sansDefaut.length ? sansDefaut : GESTES;
     const aApprendre = new Set(A_APPRENDRE.map((g) => g.id));
     // exemples du jeu : ceux appris pour les gestes à apprendre remplacent les exemples par défaut de ces gestes ;
     // un ancien apprentissage des 4 gestes ne garde que ses gestes à apprendre
@@ -69,7 +69,7 @@
       if (journalJeu.coups.length > 400) journalJeu.coups.splice(0, journalJeu.coups.findIndex((c) => c.t >= t - journalJeu.duree));
     }
     function envoyerJournal() {
-      if (!journal && !journalJeu.coups.length) return flash(texte('Rien à envoyer pour l\'instant', 'joue quelques coups, ou appuie sur « Réapprendre droite et gauche »'), '');
+      if (!journal && !journalJeu.coups.length) return flash(texte('Rien à envoyer pour l\'instant', 'joue quelques coups, ou appuie sur « Réapprendre mes 4 gestes »'), '');
       const nom = 'gyro-diagnostic-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
       const contenu = { ...(journal || { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '' }), attente, seuil: seuilActuel, jeu: journalJeu };
       const fichier = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
@@ -104,7 +104,8 @@
     // Haut et bas ne sont pas concernés (leurs retours sont nettement plus faibles et passent bien).
     const RETOUR_MUET = 600;
     let dernierLateral = null;   // { t, sens } du dernier coup droite / gauche joué
-    function jouer(t, sens) {
+    // delai : temps à attendre avant de reconnaître le geste (l'attente choisie ; 0 si ses mesures sont déjà là)
+    function jouer(t, sens, delai = attente) {
       const muet = dernierLateral && t - dernierLateral.t < RETOUR_MUET && sens.reduce((s, x, i) => s + x * dernierLateral.sens[i], 0) < 0;
       if (muet) return noterJeu(t, null, { t: Math.round(t), rot: sens.map(Math.round), muet: 'retour latéral' });
       setTimeout(() => {
@@ -117,13 +118,47 @@
         $('flash').style.background = g.couleur; $('flash').style.color = '#111';
         clearTimeout(timerFlash);
         timerFlash = setTimeout(() => { $('flash').style.background = ''; $('flash').style.color = ''; }, 150);
-      }, attente);
+      }, delai);
+    }
+
+    // Moment du son. « debut » : dès que le geste part (le plus rapide). « arret » : quand le geste s'arrête NET, comme une
+    // baguette sur une peau ; un élan ou un retour ralentit en douceur et ne sonne pas. Sur les vrais mouvements de l'iPhone
+    // (22/10/2026) : 77 % des coups retombent sous 30 % de leur sommet en moins de 0,1 s, contre 29 % des élans et 31 % des
+    // retours ; un rebond en sens inverse (≥ 10 % du sommet) marque aussi l'arrêt d'un coup. Le son part environ 0,17 s
+    // après le début du geste, au moment de l'« impact ».
+    const ARRET = { chute: 0.3, delai: 100, rebond: 0.1, rebondDelai: 150, picMin: 250, max: 450 };
+    const CLE_MOMENT = 'gyro-moment';
+    let moment = (() => { try { return localStorage.getItem(CLE_MOMENT) === 'arret' ? 'arret' : 'debut'; } catch { return 'debut'; } })();
+    let enCours = null;   // geste détecté dont on attend l'arrêt : { t, sens, pic, tPic, u }
+    function afficherMoment() {
+      if (!$('moment')) return;
+      $('moment').innerHTML = [['debut', 'Au début du geste<br><small>le plus rapide</small>'], ['arret', 'À l\'arrêt du geste<br><small>élans et retours muets</small>']]
+        .map(([m, nom]) => `<button data-m="${m}" class="${m === moment ? 'actif' : ''}">${nom}</button>`).join('');
+      $('moment').querySelectorAll('button').forEach((b) => (b.onclick = () => changerMoment(b.dataset.m)));
+    }
+    function changerMoment(m) {
+      moment = m === 'arret' ? 'arret' : 'debut'; enCours = null;
+      try { localStorage.setItem(CLE_MOMENT, moment); } catch {}
+      afficherMoment();
+    }
+    afficherMoment();
+    function suivreArret(r, t) {
+      const e = enCours, v = Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0), rv = [r.alpha || 0, r.beta || 0, r.gamma || 0];
+      if (v > e.pic) { e.pic = v; e.tPic = t; e.u = rv.map((x) => x / v); }
+      const inverse = -rv.reduce((s, x, i) => s + x * e.u[i], 0);
+      const net = e.pic >= ARRET.picMin && ((v < ARRET.chute * e.pic && t - e.tPic <= ARRET.delai) || (inverse >= ARRET.rebond * e.pic && t - e.tPic <= ARRET.rebondDelai));
+      if (net) { enCours = null; return jouer(e.t, e.sens, 0); }
+      if (t - e.tPic > ARRET.rebondDelai || t - e.t > ARRET.max) {
+        enCours = null;
+        noterJeu(t, null, { t: Math.round(e.t), rot: e.sens.map(Math.round), muet: 'pas d\'arrêt net', pic: Math.round(e.pic) });
+      }
     }
     // e : événement devicemotion ; renvoie la vitesse de rotation totale (°/s) pour l'affichage, ou null sans gyroscope
     function surMouvement(e, t = performance.now()) {
       const r = e.rotationRate;
       if (!r || ![r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return null;
       historique.ajouter(t, r, e.acceleration);
+      if (enCours && !apprentissage) suivreArret(r, t);
       const derniere = historique.mesures[historique.mesures.length - 1];
       const mesure = [Math.round(t), derniere.rot.map((x) => Math.round(x * 10) / 10), derniere.acc.map((x) => Math.round(x * 100) / 100)];
       if (apprentissage && journal && journal.mesures.length < 30000) journal.mesures.push(mesure);
@@ -139,14 +174,18 @@
               if (journal) journal.decisions.push({ t: Math.round(t), etape, repos, resultat, sens: Apprentissage.sensDuCoup(mesures, t).map(Math.round) });
             }, FENETRE + 20);
           }
-        } else if (modele) jouer(t, [r.alpha || 0, r.beta || 0, r.gamma || 0]);
+        } else if (modele) {
+          const sens = [r.alpha || 0, r.beta || 0, r.gamma || 0], v = Math.hypot(...sens);
+          if (moment === 'arret') enCours = { t, sens, pic: v, tPic: t, u: sens.map((x) => x / (v || 1)) };
+          else jouer(t, sens);
+        }
       }
       return Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0);
     }
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
     function commencer() { if (charger()) flash(texte('Joue !', 'les 4 gestes sont prêts'), ''); else apprendre(); }
-    return { surMouvement, apprendre, charger, commencer, changerSeuil, get enApprentissage() { return !!apprentissage; }, A_APPRENDRE,
+    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, A_APPRENDRE,
       exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }
 

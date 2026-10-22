@@ -402,20 +402,62 @@ test('4 gestes par défaut (vrais coups iPhone du 22/10) : 15 de chaque, bien di
   assert.ok(G.evaluer(D, 30).precision >= 0.95, Math.round(G.evaluer(D, 30).precision * 100) + ' %');
 });
 
-test('4 gestes par défaut : on joue sans rien apprendre ; « Réapprendre » ne refait que droite et gauche, qui remplacent les leurs', () => {
+test('4 gestes par défaut : on joue sans rien apprendre ; « Réapprendre » refait les 4 gestes, qui remplacent les exemples par défaut', () => {
   const defaut = exemples(Array.from({ length: 60 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
   const s = jeuSimule(defaut), sons = [];
   s.sonner = (g) => sons.push(g.id);
   assert.strictEqual(s.jeu.charger(), true);   // rien à apprendre
-  assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'droite gauche');
+  assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'bas haut droite gauche');
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of ['droite', 'gauche']) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
-  assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 30, s.bips.join(' '));
+  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 60, s.bips.join(' '));
   const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-4'));
-  assert.strictEqual([...new Set(stocke.exemples.map((e) => e.geste))].join(' '), 'droite gauche');
+  assert.strictEqual([...new Set(stocke.exemples.map((e) => e.geste))].join(' '), 'bas haut droite gauche');
   const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
   s.jouer(immobile);
   const attendu = ['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche'];
+  s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
+  assert.strictEqual(sons.length, 8, sons.join(' '));
+  assert.ok(attendu.filter((g, i) => sons[i] === g).length >= 7, sons.join(' '));
+});
+
+// ---- Moment du son : au début du geste (rapide) ou à son arrêt (un coup s'arrête net ; élan et retour ralentissent en douceur) ----
+// mouvement dans le sens u : montée en « montee » ms jusqu'à « pic » °/s, puis descente en « descente » ms
+function mouvementSens(u, { montee = 60, pic = 700, descente = 50 } = {}) {
+  const ech = [];
+  for (let t = 0; t < 300 + montee + descente + 300; t += 1000 / 60) {
+    const x = t - 300, w = x < 0 ? 0 : x < montee ? pic * Math.sin(Math.PI / 2 * x / montee) : x < montee + descente ? pic * Math.cos(Math.PI / 2 * (x - montee) / descente) : 0;
+    ech.push({ t, rot: u.map((c) => c * w + entre(-3, 3)), acc: [0, 0, 0] });
+  }
+  return ech;
+}
+// sens de rotation d'un coup simulé (au sommet)
+const sensDe = (g) => { const { ech } = seance([g], {}), e = ech.reduce((a, b) => (Math.hypot(...b.rot) > Math.hypot(...a.rot) ? b : a)); const n = Math.hypot(...e.rot); return e.rot.map((x) => x / n); };
+
+test('moment du son « arrêt » : un coup qui s\'arrête net sonne ; un mouvement qui ralentit en douceur (élan, retour) se tait', () => {
+  const { s, sons } = jeuAppris();
+  s.jeu.changerMoment('arret');
+  const u = sensDe('bas');
+  sons.length = 0; s.jouer(mouvementSens(u, { descente: 50 })); s.avancer(s.horloge + 500);
+  assert.strictEqual(sons.join(' '), 'bas', 'arrêt net : ' + sons.join(' '));
+  sons.length = 0; s.jouer(mouvementSens(u, { descente: 400 })); s.avancer(s.horloge + 500);
+  assert.strictEqual(sons.length, 0, 'arrêt en douceur : ' + sons.join(' '));
+  // au début du geste (réglage par défaut), le même mouvement doux sonne
+  s.jeu.changerMoment('debut');
+  sons.length = 0; s.jouer(mouvementSens(u, { descente: 400 })); s.avancer(s.horloge + 500);
+  assert.strictEqual(sons.join(' '), 'bas', 'début du geste : ' + sons.join(' '));
+});
+
+test('moment du son « arrêt » : le son part à l\'arrêt (après le sommet), et une suite de vrais coups est jouée en entier', () => {
+  const { s, sons } = jeuAppris();
+  const instants = []; s.sonner = (g) => { sons.push(g.id); instants.push(s.horloge); };
+  s.jeu.changerMoment('arret');
+  // coup du simulateur : le geste part à 450 ms, son sommet de vitesse est à mi-parcours (~70 ms plus tard)
+  const h0 = s.horloge;
+  s.jouer(seance(['haut']).ech); s.avancer(s.horloge + 500);
+  assert.strictEqual(sons.length, 1, sons.join(' '));   // un seul son (la reconnaissance elle-même est vérifiée ailleurs)
+  assert.ok(instants[0] - h0 >= 450 + 50, `son à ${Math.round(instants[0] - h0 - 450)} ms du début du geste`);
+  sons.length = 0; const attendu = ['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche'];
   s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
   assert.ok(attendu.filter((g, i) => sons[i] === g).length >= 7, sons.join(' '));
