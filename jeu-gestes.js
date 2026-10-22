@@ -1,8 +1,8 @@
-// Partie commune aux pages du téléphone (identique dans les trois apps) : apprentissage guidé des 4 gestes,
-// choix de l'attente, puis jeu. La page dit seulement où sonne le son :
+// Partie commune aux pages du téléphone (identique dans les trois apps) : apprentissage guidé des gestes qui n'ont pas
+// d'exemples par défaut (gestes-defaut.js fournit haut et bas : on n'apprend plus que droite et gauche), choix de l'attente, jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
 //   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
-// Il faut gestes.js et apprentissage.js avant ce fichier.
+// Il faut gestes.js, apprentissage.js (et gestes-defaut.js) avant ce fichier.
 (function (racine) {
   const GESTES = [
     { id: 'bas', nom: 'coup vers le BAS ↓', son: 'Grosse caisse', couleur: '#e8643c' },
@@ -17,7 +17,12 @@
   const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
   // nomDuSon(geste, i) : nom affiché (version multi : le son choisi sur l'ordinateur pour ce téléphone)
-  function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son }) {
+  // parDefaut : exemples fournis d'office ({ geste, t, mesures }) ; leurs gestes ne sont pas réappris
+  function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut = racine.GESTES_DEFAUT || [] }) {
+    const parDefautIds = new Set(parDefaut.map((e) => e.geste));
+    const A_APPRENDRE = GESTES.filter((g) => !parDefautIds.has(g.id));
+    // exemples du jeu = ceux par défaut + ceux appris (un ancien apprentissage des 4 gestes ne garde que les gestes à apprendre)
+    const tousLesExemples = (appris) => [...parDefaut, ...(appris || []).filter((e) => !parDefautIds.has(e.geste))];
     const historique = Gestes.creerHistorique(800);
     let declencheur = Gestes.creerDeclencheur({ seuil }), seuilActuel = seuil;
     let apprentissage = null, modele = null, attente = 30, timerFlash;
@@ -25,8 +30,8 @@
       .map((m) => ({ t: Math.round(m.t), rot: m.rot.map((x) => Math.round(x * 10) / 10), acc: m.acc.map((x) => Math.round(x * 100) / 100) }));
     const flash = (html, fond = '#234') => { $('flash').style.background = fond; $('flash').style.color = ''; $('flash').innerHTML = html; };
     const texte = (titre, detail = '', bas = '') => `<div style="font-size:20px;line-height:1.5">${titre}<br><span style="font-size:15px;font-weight:400;color:#bbb">${detail}</span>${bas}</div>`;
-    const consigne = (e) => flash(texte(`Geste ${e.etape + 1} sur ${GESTES.length} : ${e.geste.nom}`,
-      `${nomDuSon(e.geste, e.etape)} · fais ${PAR_GESTE} coups variés (forts, doux, bras haut, bras bas)`,
+    const consigne = (e) => flash(texte(`Geste ${e.etape + 1} sur ${A_APPRENDRE.length} : ${e.geste.nom}`,
+      `${nomDuSon(e.geste, GESTES.indexOf(e.geste))} · fais ${PAR_GESTE} coups variés (forts, doux, bras haut, bras bas)`,
       `<div style="font-size:30px;margin-top:8px">${e.coups} / ${PAR_GESTE}</div>`));
 
     function surEvenement(e) {
@@ -39,15 +44,16 @@
         biper('coup'); biper('fin');
         if (journal) journal.fin = Math.round(performance.now());
         apprentissage = null;
-        ecrire({ exemples: e.exemples, precisions: e.precisions, attente: e.attente });
+        const { precisions, attente: choix } = Apprentissage.choisirAttente(tousLesExemples(e.exemples));   // avec haut/bas par défaut
+        ecrire({ exemples: e.exemples, attente: choix });
         charger();
-        flash(texte('Appris !', `${e.precisions[Apprentissage.ATTENTES.indexOf(e.attente)]} % de gestes reconnus avec ${e.attente} ms d'attente · à toi de jouer`), '');
+        flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus avec ${choix} ms d'attente · à toi de jouer`), '');
       }
     }
     // Diagnostic : mesures brutes et décisions du dernier apprentissage, envoyées par le bouton « diagnostic » de la page
     let journal = null;
     function envoyerJournal() {
-      if (!journal) return flash(texte('Rien à envoyer pour l\'instant', 'appuie d\'abord sur « Réapprendre mes gestes » et fais au moins le geste qui pose problème'), '');
+      if (!journal) return flash(texte('Rien à envoyer pour l\'instant', 'appuie d\'abord sur « Réapprendre droite et gauche » et fais au moins le geste qui pose problème'), '');
       const nom = 'gyro-apprentissage-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
       const fichier = new File([JSON.stringify(journal)], nom, { type: 'application/json' });
       // iPhone : feuille de partage (AirDrop vers le Mac, Mail…) ; sinon téléchargement
@@ -61,15 +67,16 @@
         colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [] };
       if (apprentissage) apprentissage.annuler();
       $('precision').hidden = true;
-      apprentissage = Apprentissage.creerApprentissage({ gestes: GESTES, parGeste: PAR_GESTE,
+      apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste: PAR_GESTE,
         signaler: (e) => { if (journal) journal.evenements.push([Math.round(performance.now()), e.type, e.etape]); surEvenement(e); } });
     }
     function charger() {
-      const m = lire();
-      if (!m.exemples || !m.exemples.length) { modele = null; return false; }
-      attente = m.attente;
-      modele = Gestes.entrainer(m.exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
-      $('attentes').innerHTML = Apprentissage.ATTENTES.map((a, i) => `<button data-a="${a}" class="${a === attente ? 'actif' : ''}">${a} ms<br>${m.precisions[i]} %</button>`).join('');
+      const m = lire(), exemples = tousLesExemples(m.exemples);
+      if (!A_APPRENDRE.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
+      const { precisions, attente: choix } = Apprentissage.choisirAttente(exemples);
+      attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : choix;
+      modele = Gestes.entrainer(exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
+      $('attentes').innerHTML = Apprentissage.ATTENTES.map((a, i) => `<button data-a="${a}" class="${a === attente ? 'actif' : ''}">${a} ms<br>${precisions[i]} %</button>`).join('');
       $('attentes').querySelectorAll('button').forEach((b) => (b.onclick = () => { const o = lire(); o.attente = Number(b.dataset.a); ecrire(o); charger(); }));
       $('precision').hidden = false;
       return true;
@@ -121,7 +128,7 @@
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
     function commencer() { if (charger()) flash(texte('Joue !', 'tes gestes appris sont repris'), ''); else apprendre(); }
-    return { surMouvement, apprendre, charger, commencer, changerSeuil, get enApprentissage() { return !!apprentissage; },
+    return { surMouvement, apprendre, charger, commencer, changerSeuil, get enApprentissage() { return !!apprentissage; }, A_APPRENDRE,
       exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }
 
