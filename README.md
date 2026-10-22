@@ -1,6 +1,6 @@
 # SEB-SOLOGYRO-BATTERIE
 
-Le téléphone seul : il sert de baguette **et joue lui-même** les sons. Il reconnaît 3 gestes : coup **vers le bas** → **grosse caisse**, **vers le haut** → **cymbale**, **vers la gauche** → **caisse claire**. Pas d'ordinateur, pas de réseau : aucun retard dû au Wi-Fi.
+Le téléphone seul : il sert de baguette **et joue lui-même** les sons. Il reconnaît 3 gestes : coup **vers le bas** → **grosse caisse**, **vers le haut** → **cymbale**, **vers la gauche** → **caisse claire** (par défaut ; le son de chaque geste se choisit sur la page). Pas d'ordinateur, pas de réseau : aucun retard dû au Wi-Fi.
 
 Version « solo » de [SEB-GYROBATTERIE](https://github.com/SEB102/seb-gyrobatterie) (son sur l'ordinateur) et [SEB-MULTIGYRO-BATTERIE](https://github.com/SEB102/seb-multigyro-batterie) (plusieurs téléphones).
 
@@ -12,6 +12,7 @@ Sur le téléphone (iPhone ou Android), ouvrir **https://seb102.github.io/seb-so
 2. **Rien à apprendre** : les 3 gestes sont fournis d'office. Pour les adapter à sa façon de jouer : « Réapprendre mes 3 gestes » (10 coups de chacun, guidés par des bips ; voir « Les 3 gestes »).
 3. Jouer. Ajouter la page à l'écran d'accueil pour l'avoir en un toucher (iPhone : Partager → « Sur l'écran d'accueil » ; Android : ⋮ → « Ajouter à l'écran d'accueil »).
 
+- **Son de chaque geste** : un menu par geste, au choix parmi grosse caisse, cymbale, caisse claire et Wobble « Ho » (fermé) ; le même son peut servir à plusieurs gestes. Le choix est gardé dès qu'on le change (dans le téléphone) et on entend le son choisi.
 - **Sensibilité** (0 à 100 %, **80 % par défaut**) : 100 % = le geste le plus léger suffit.
 - **Réapprendre mes gestes** si on change franchement de prise en main ou de façon de jouer.
 - **Écran noir verrouillé** : l'écran devient entièrement noir (presque aucune consommation sur un écran OLED) et ignore les touchers ; on continue de jouer. **Appui long de 2 s** pour revenir.
