@@ -37,7 +37,7 @@
       if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('coup'); biper('gesteFini'); }
       if (e.type === 'fin') {
         biper('coup'); biper('fin');
-        if (journal) { journal.fin = Math.round(performance.now()); if ($('diagnostic')) $('diagnostic').hidden = false; }
+        if (journal) journal.fin = Math.round(performance.now());
         apprentissage = null;
         ecrire({ exemples: e.exemples, precisions: e.precisions, attente: e.attente });
         charger();
@@ -47,7 +47,7 @@
     // Diagnostic : mesures brutes et décisions du dernier apprentissage, envoyées par le bouton « diagnostic » de la page
     let journal = null;
     function envoyerJournal() {
-      if (!journal) return;
+      if (!journal) return flash(texte('Rien à envoyer pour l\'instant', 'appuie d\'abord sur « Réapprendre mes gestes » et fais au moins le geste qui pose problème'), '');
       const nom = 'gyro-apprentissage-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
       const fichier = new File([JSON.stringify(journal)], nom, { type: 'application/json' });
       // iPhone : feuille de partage (AirDrop vers le Mac, Mail…) ; sinon téléchargement
@@ -59,7 +59,6 @@
     function apprendre() {
       journal = { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '', debut: Math.round(performance.now()), seuil: seuilActuel,
         colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [] };
-      if ($('diagnostic')) $('diagnostic').hidden = false;   // envoyable même si l'apprentissage est abandonné en route
       if (apprentissage) apprentissage.annuler();
       $('precision').hidden = true;
       apprentissage = Apprentissage.creerApprentissage({ gestes: GESTES, parGeste: PAR_GESTE,
