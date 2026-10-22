@@ -14,6 +14,13 @@
   // gyro-gestes-6 : mémoire des 3 gestes (22/10/2026 au soir) ; les apprentissages d'avant (gyro-gestes-5 et plus anciens, à
   // 4 gestes) sont ignorés : les exemples et l'attente par défaut s'appliquent dès l'ouverture
   const CLE = 'gyro-gestes-6';
+  // Gaucher : téléphone dans la main gauche, tenu en miroir de la main droite (écran vers la paume, haut du téléphone du même
+  // côté ; c'est donc l'autre grand côté qui est en bas). Ses mouvements sont l'image dans un miroir de ceux d'un droitier :
+  // ramenés en droitier, la rotation autour de l'axe x du téléphone (vertical dans cette prise en main) est gardée, celles
+  // autour de y et z sont inversées, et l'accélération selon x est inversée (rotation = vecteur axial : ω' = −Pω, a' = Pa,
+  // P = symétrie de l'axe x). Les exemples (par défaut ou appris) restent en droitier ; le coup « gauche » se fait vers la droite.
+  const miroir = (r, a) => [{ alpha: r.alpha, beta: typeof r.beta === 'number' ? -r.beta : r.beta, gamma: typeof r.gamma === 'number' ? -r.gamma : r.gamma },
+    a && { x: typeof a.x === 'number' ? -a.x : a.x, y: a.y, z: a.z }];
   const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || '{}'); } catch { return {}; } };
   const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
@@ -22,6 +29,8 @@
   // attenteDefaut : attente tant que rien n'est appris (celle de la séance qui a fourni les exemples par défaut)
   function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut = racine.GESTES_DEFAUT || [], attenteDefaut = racine.ATTENTE_DEFAUT }) {
     const gestes = GESTES, parGeste = PAR_GESTE;
+    let gaucher = false;
+    const nomGeste = (g) => (gaucher && g.id === 'gauche' ? 'coup vers la DROITE →' : g.nom);   // pour un gaucher, le coup latéral part vers la droite
     const parDefautIds = new Set(parDefaut.map((e) => e.geste));
     // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend les 3
     const sansDefaut = gestes.filter((g) => !parDefautIds.has(g.id));
@@ -40,7 +49,7 @@
       .map((m) => ({ t: Math.round(m.t), rot: m.rot.map((x) => Math.round(x * 10) / 10), acc: m.acc.map((x) => Math.round(x * 100) / 100) }));
     const flash = (html, fond = '#234') => { $('flash').style.background = fond; $('flash').style.color = ''; $('flash').innerHTML = html; };
     const texte = (titre, detail = '', bas = '') => `<div style="font-size:20px;line-height:1.5">${titre}<br><span style="font-size:15px;font-weight:400;color:#bbb">${detail}</span>${bas}</div>`;
-    const consigne = (e) => flash(texte(`Geste ${e.etape + 1} sur ${A_APPRENDRE.length} : ${e.geste.nom}`,
+    const consigne = (e) => flash(texte(`Geste ${e.etape + 1} sur ${A_APPRENDRE.length} : ${nomGeste(e.geste)}`,
       `${nomDuSon(e.geste, gestes.indexOf(e.geste))} · fais ${parGeste} coups variés (forts, doux, bras haut, bras bas)`,
       `<div style="font-size:30px;margin-top:8px">${e.coups} / ${parGeste}</div>`));
 
@@ -49,32 +58,28 @@
       if (e.type === 'debut') { consigne(e); biper('debut'); }
       if (e.type === 'coup') { consigne(e); biper('coup'); }   // on entend chaque coup compté, sans regarder l'écran
       // le dernier coup d'un geste bipe aussi, puis les bips de fin (décalés de 0,15 s par la page)
-      if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('coup'); biper('gesteFini'); }
+      if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${nomGeste(e.suivant)}`)); biper('coup'); biper('gesteFini'); }
       if (e.type === 'fin') {
         biper('coup'); biper('fin');
         apprentissage = null;
         const { precisions, attente: choix } = Apprentissage.choisirAttente(tousLesExemples(e.exemples));   // avec haut/bas par défaut
         ecrire({ exemples: e.exemples, attente: choix });
         charger();
-        flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus avec ${choix} ms d'attente · à toi de jouer`), '');
+        flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus · à toi de jouer`), '');
       }
     }
 
     function apprendre() {
       if (apprentissage) apprentissage.annuler();
-      $('precision').hidden = true;
       apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste,
         signaler: surEvenement });
     }
     function charger() {
       const m = lire(), exemples = tousLesExemples(m.exemples);
       if (!gestes.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
-      const { precisions, attente: choix } = Apprentissage.choisirAttente(exemples);
+      const { attente: choix } = Apprentissage.choisirAttente(exemples);   // attente : réglée d'office, plus de choix à l'écran
       attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : Apprentissage.ATTENTES.includes(attenteDefaut) ? attenteDefaut : choix;
       modele = Gestes.entrainer(exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
-      $('attentes').innerHTML = Apprentissage.ATTENTES.map((a, i) => `<button data-a="${a}" class="${a === attente ? 'actif' : ''}">${a} ms<br>${precisions[i]} %</button>`).join('');
-      $('attentes').querySelectorAll('button').forEach((b) => (b.onclick = () => { const o = lire(); o.attente = Number(b.dataset.a); ecrire(o); charger(); }));
-      $('precision').hidden = false;
       return true;
     }
     // Retour muet pour gauche : le retour du poignet après un coup latéral est un mouvement en sens inverse,
@@ -130,9 +135,10 @@
     }
     // e : événement devicemotion ; renvoie la vitesse de rotation totale (°/s) pour l'affichage, ou null sans gyroscope
     function surMouvement(e, t = performance.now()) {
-      const r = e.rotationRate;
+      let r = e.rotationRate, acc = e.acceleration;
       if (!r || ![r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return null;
-      historique.ajouter(t, r, e.acceleration);
+      if (gaucher) [r, acc] = miroir(r, acc);
+      historique.ajouter(t, r, acc);
       if (enCours && !apprentissage) suivreArret(r, t);
       if (declencheur.traiter(r, t)) {
         if (apprentissage) {
@@ -152,12 +158,13 @@
       }
       return Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0);
     }
+    function changerMain(g) { gaucher = !!g; enCours = null; }
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
     function commencer() { if (charger()) flash(texte('Joue !', `les ${gestes.length} gestes sont prêts`), ''); else apprendre(); }
-    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, A_APPRENDRE,
+    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, changerMain, get gaucher() { return gaucher; }, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, get attente() { return attente; }, A_APPRENDRE,
       exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }
 
-  racine.JeuGestes = { creerJeu, GESTES, CLE };
+  racine.JeuGestes = { creerJeu, GESTES, CLE, miroir };
 })(this);

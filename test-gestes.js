@@ -237,7 +237,7 @@ test('apprentissage : le jeu de 4 gestes appris (retours ignorés) reconnaît dr
 
 // ---- Écran du téléphone (jeu-gestes.js : 3 gestes, bas, haut, gauche) chargé avec un faux écran et une horloge simulée ----
 const TROIS = ['bas', 'haut', 'gauche'];
-function jeuSimule(parDefaut = [], { attenteDefaut, memoire = {} } = {}) {
+function jeuSimule(parDefaut = [], { attenteDefaut, memoire = {}, seuil = 216 } = {}) {
   const vm = require('vm'), fs = require('fs');
   let horloge = 0; const file = [];
   const ctx = { performance: { now: () => horloge }, setTimeout: (f, ms) => file.push([horloge + ms, f]), clearTimeout() {}, localStorage: { m: memoire, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = String(v); } }, Math, JSON };
@@ -246,7 +246,7 @@ function jeuSimule(parDefaut = [], { attenteDefaut, memoire = {} } = {}) {
   const elements = {}, $ = (id) => (elements[id] = elements[id] || { style: {}, innerHTML: '', textContent: '', hidden: false, querySelectorAll: () => [] });
   const bips = [];
   const sortie = { sonner() {} };
-  const jeu = ctx.JeuGestes.creerJeu({ $, seuil: 216, sonner: (g, f) => sortie.sonner(g, f), biper: (b) => bips.push(b), parDefaut, attenteDefaut });
+  const jeu = ctx.JeuGestes.creerJeu({ $, seuil, sonner: (g, f) => sortie.sonner(g, f), biper: (b) => bips.push(b), parDefaut, attenteDefaut });
   const avancer = (t) => { for (;;) { file.sort((a, b) => a[0] - b[0]); if (!file.length || file[0][0] > t) break; const [q, f] = file.shift(); horloge = q; f(); } horloge = t; };
   const mouvement = (rot, acc = [0, 0, 0]) => jeu.surMouvement({ rotationRate: { alpha: rot[0], beta: rot[1], gamma: rot[2] }, acceleration: { x: acc[0], y: acc[1], z: acc[2] } }, horloge);
   // joue des échantillons (t relatif) à partir de maintenant ; arret() vrai → on s'arrête (comme l'utilisateur aux 2 bips de fin de geste)
@@ -340,7 +340,7 @@ test('à l\'ouverture : exemples et attente par défaut appliqués d\'office, m�
   const ancien = exemplesDe(Array.from({ length: 40 }, (_, k) => ['bas', 'haut', 'droite', 'gauche'][k % 4]));
   const s = jeuSimule(D, { attenteDefaut: 0, memoire: { 'gyro-gestes-5': JSON.stringify({ exemples: ancien, attente: 60 }) } });
   assert.strictEqual(s.jeu.charger(), true);
-  assert.ok(/data-a="0" class="actif"/.test(s.elements.attentes.innerHTML), s.elements.attentes.innerHTML);
+  assert.strictEqual(s.jeu.attente, 0);
   assert.strictEqual(s.stockage.getItem('gyro-gestes-6'), null);   // rien d'écrit tant qu'on ne réapprend pas
 });
 
@@ -430,6 +430,76 @@ test('moment du son « arrêt » : le son part à l\'arrêt (après le sommet), 
   s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
   assert.ok(attendu.filter((g, i) => sons[i] === g).length >= 7, sons.join(' '));
+});
+
+// ---- Gaucher : téléphone dans la main gauche, tenu en miroir (écran vers la paume, haut du téléphone du même côté) ----
+const miroirDe = () => jeuSimule().JeuGestes.miroir;
+// mesure (rot [α, β, γ], acc [x, y, z]) passée par le miroir du module
+const enMiroir = (m) => { const [r, a] = miroirDe()({ alpha: m.rot[0], beta: m.rot[1], gamma: m.rot[2] }, { x: m.acc[0], y: m.acc[1], z: m.acc[2] }); return { ...m, rot: [r.alpha, r.beta, r.gamma], acc: [a.x, a.y, a.z] }; };
+
+test('gaucher, géométrie : le miroir du module est exactement celui d\'une main gauche tenant le téléphone en miroir (écran vers la paume, haut devant)', () => {
+  // pièce : X devant, Y à gauche, Z en haut ; M = miroir gauche/droite ; P = symétrie de l'axe x du téléphone
+  const mul = (A, B) => A.map((l) => B[0].map((_, j) => l.reduce((s, x, k) => s + x * B[k][j], 0)));
+  const app = (A, v) => A.map((l) => l.reduce((s, x, k) => s + x * v[k], 0)), tr = (A) => A[0].map((_, j) => A.map((l) => l[j]));
+  const M = [[1, 0, 0], [0, -1, 0], [0, 0, 1]], P = [[-1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const rot = (u, a) => { const c = Math.cos(a), s = Math.sin(a), [x, y, z] = u; return [[c + x * x * (1 - c), x * y * (1 - c) - z * s, x * z * (1 - c) + y * s], [y * x * (1 - c) + z * s, c + y * y * (1 - c), y * z * (1 - c) - x * s], [z * x * (1 - c) - y * s, z * y * (1 - c) + x * s, c + z * z * (1 - c)]]; };
+  const det = (A) => A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+  const m = miroirDe();
+  for (let k = 0; k < 200; k++) {
+    const u = [entre(-1, 1), entre(-1, 1), entre(-1, 1)], n = Math.hypot(...u), R = rot(u.map((x) => x / n), entre(-3, 3));   // tenue quelconque (téléphone → pièce)
+    const w = [entre(-900, 900), entre(-900, 900), entre(-900, 900)], a = [entre(-20, 20), entre(-20, 20), entre(-20, 20)];   // dans le repère du téléphone
+    const Rg = mul(mul(M, R), P);                                         // même tenue, main gauche, en miroir
+    assert.ok(Math.abs(det(Rg) - 1) < 1e-9, 'la tenue miroir doit être un vrai téléphone');
+    const wg = app(tr(Rg), app(M, app(R, w)).map((x) => -x));             // rotation : vecteur axial, ω' = −M ω dans la pièce
+    const ag = app(tr(Rg), app(M, app(R, a)));                            // accélération : vecteur ordinaire
+    const [r2, a2] = m({ alpha: wg[0], beta: wg[1], gamma: wg[2] }, { x: ag[0], y: ag[1], z: ag[2] });   // ramené en droitier
+    assert.ok([r2.alpha - w[0], r2.beta - w[1], r2.gamma - w[2], a2.x - a[0], a2.y - a[1], a2.z - a[2]].every((d) => Math.abs(d) < 1e-6), 'miroir faux');
+  }
+  // prise en main de l'iPhone (x vertical, y devant) : le geste « gauche » droitier (lacet vers la gauche, +Z) devient pour le gaucher un lacet vers la droite
+  const R = [[0, 1, 0], [0, 0, 1], [1, 0, 0]];   // colonnes : x → haut, y → devant, z → gauche
+  const Rg = mul(mul(M, R), P);
+  assert.deepStrictEqual(tr(Rg).map((c) => c.map(Math.round)), [[0, 0, -1], [1, 0, 0], [0, -1, 0]], 'main gauche : x vers le bas, y devant, z vers la droite');
+  const gw = app(M, [0, 0, 1]).map((x) => -x); assert.deepStrictEqual(gw.map((x) => x + 0), [0, 0, -1]);
+});
+
+test('gaucher, vrais coups iPhone passés en miroir : en mode gaucher chacun sonne son geste ; en mode droitier haut et bas sont échangés', () => {
+  const D = require('./gestes-defaut.js');
+  for (const modeGaucher of [true, false]) {
+    const s = jeuSimule(D, { attenteDefaut: 0, seuil: 178 }), sons = [];
+    s.sonner = (g) => sons.push(g.id); s.jeu.charger(); s.jeu.changerMain(modeGaucher);
+    const joues = [];
+    for (const e of D) {
+      s.jouer(immobile().slice(0, 40));
+      s.jouer(e.mesures.map((m) => enMiroir({ ...m, t: m.t + 100 })));   // ce que produit un gaucher : l'image en miroir du coup
+      s.jouer(immobile().slice(0, 40)); joues.push(e.geste);
+    }
+    if (modeGaucher) assert.deepStrictEqual(sons, joues, sons.join(' '));
+    // sans le mode gaucher, le téléphone tenu en miroir (l'autre grand côté en bas) échange haut et bas ; le coup latéral, lui, reste
+    // reconnu (le lacet vers la droite, téléphone retourné, tourne dans le même sens autour de son axe x que le lacet droitier)
+    else assert.deepStrictEqual(sons, joues.map((g) => ({ bas: 'haut', haut: 'bas', gauche: 'gauche' })[g]), 'droitier : ' + sons.join(' '));
+  }
+});
+
+test('gaucher : un apprentissage fait en mode gaucher (gestes en miroir) est enregistré en droitier et joue juste dans les deux modes', () => {
+  const s = jeuSimule(), sons = []; s.sonner = (g) => sons.push(g.id);
+  s.jeu.changerMain(true); assert.strictEqual(s.jeu.gaucher, true);
+  s.jeu.apprendre(); s.avancer(1700);
+  for (const g of TROIS) { s.jouer(seance(Array(13).fill(g), { retour: 1 }).ech.map(enMiroir), s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 30, s.bips.join(' '));
+  s.jouer(immobile());
+  const attendu = ['bas', 'haut', 'gauche', 'bas', 'gauche', 'haut'];
+  sons.length = 0; s.jouer(seance(attendu).ech.map(enMiroir)); s.avancer(s.horloge + 1000);
+  assert.ok(sons.length === 6 && attendu.filter((g, i) => sons[i] === g).length >= 5, 'gaucher : ' + sons.join(' '));
+  s.jeu.changerMain(false); s.jouer(immobile());
+  sons.length = 0; s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
+  assert.ok(sons.length === 6 && attendu.filter((g, i) => sons[i] === g).length >= 5, 'droitier : ' + sons.join(' '));
+});
+
+test('gaucher : l\'écran d\'apprentissage annonce le coup latéral vers la droite', () => {
+  const s = jeuSimule([], {}); s.jeu.changerMain(true); s.jeu.apprendre(); s.avancer(1700);
+  s.jouer(seance(Array(13).fill('bas'), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800);
+  s.jouer(seance(Array(13).fill('haut'), { retour: 1 }).ech.map(enMiroir), s.finDeGeste()); s.avancer(s.horloge + 1800);
+  assert.ok(/vers la DROITE/.test(s.elements.flash.innerHTML) && !/GAUCHE/.test(s.elements.flash.innerHTML), s.elements.flash.innerHTML);
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
