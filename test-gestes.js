@@ -236,7 +236,7 @@ test('apprentissage : le jeu de 4 gestes appris (retours ignorés) reconnaît dr
 });
 
 // ---- Écran du téléphone (jeu-gestes.js) chargé avec un faux écran et une horloge simulée ----
-function jeuSimule(parDefaut = []) {
+function jeuSimule(parDefaut = [], gestes) {
   const vm = require('vm'), fs = require('fs');
   let horloge = 0; const file = [];
   const ctx = { performance: { now: () => horloge }, setTimeout: (f, ms) => file.push([horloge + ms, f]), clearTimeout() {}, localStorage: { m: {}, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = String(v); } }, Math, JSON };
@@ -245,7 +245,7 @@ function jeuSimule(parDefaut = []) {
   const elements = {}, $ = (id) => (elements[id] = elements[id] || { style: {}, innerHTML: '', textContent: '', hidden: false, querySelectorAll: () => [] });
   const bips = [];
   const sortie = { sonner() {} };
-  const jeu = ctx.JeuGestes.creerJeu({ $, seuil: 216, sonner: (g, f) => sortie.sonner(g, f), biper: (b) => bips.push(b), parDefaut });
+  const jeu = ctx.JeuGestes.creerJeu({ $, seuil: 216, sonner: (g, f) => sortie.sonner(g, f), biper: (b) => bips.push(b), parDefaut, gestes: gestes && gestes(ctx.JeuGestes.GESTES) });
   const avancer = (t) => { for (;;) { file.sort((a, b) => a[0] - b[0]); if (!file.length || file[0][0] > t) break; const [q, f] = file.shift(); horloge = q; f(); } horloge = t; };
   const mouvement = (rot, acc = [0, 0, 0]) => jeu.surMouvement({ rotationRate: { alpha: rot[0], beta: rot[1], gamma: rot[2] }, acceleration: { x: acc[0], y: acc[1], z: acc[2] } }, horloge);
   // joue des échantillons (t relatif) à partir de maintenant
@@ -478,6 +478,79 @@ test('mémoire enregistrée par la version avec « rien » (22/10, 2026-10-22l) 
   assert.strictEqual(s.jeu.charger(), true);
   s.jouer(seance(['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche']).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
+});
+
+// ---- SOLO : 3 gestes seulement (bas, haut, gauche ; « droite » retiré, gauche joue la caisse claire) ----
+const TROIS = ['bas', 'haut', 'gauche'];
+const gestesSolo = (G4) => G4.filter((g) => g.id !== 'droite').map((g) => (g.id === 'gauche' ? { ...g, son: 'Caisse claire', couleur: '#4c9be8' } : g));
+const immobile3s = () => { const l = []; for (let t = 0; t < 3000; t += 1000 / 60) l.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] }); return l; };
+
+test('SOLO 3 gestes : prêts sans rien apprendre (exemples par défaut) ; bas, haut et gauche sonnent juste, gauche = caisse claire', () => {
+  const defaut = exemples(Array.from({ length: 60 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
+  const s = jeuSimule(defaut, gestesSolo), sons = [];
+  s.sonner = (g) => sons.push(g.id + ':' + g.son);
+  assert.strictEqual(s.jeu.charger(), true);
+  assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'bas haut gauche');
+  s.jouer(immobile3s());
+  const attendu = ['bas', 'haut', 'gauche', 'bas', 'gauche', 'haut', 'gauche', 'bas', 'haut'];
+  s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
+  const noms = { bas: 'bas:Grosse caisse', haut: 'haut:Cymbale', gauche: 'gauche:Caisse claire' };
+  assert.strictEqual(sons.length, attendu.length, sons.join(' '));
+  assert.ok(attendu.filter((g, i) => sons[i] === noms[g]).length >= attendu.length - 1, sons.join(' '));
+});
+
+test('SOLO 3 gestes : « Réapprendre » ne demande que bas, haut, gauche (150 coups) ; la « droite » déjà apprise reste en mémoire pour les deux autres apps', () => {
+  const defaut = exemples(Array.from({ length: 60 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
+  const s = jeuSimule(defaut, gestesSolo), sons = [];
+  const ancienne = exemples(Array(12).fill('droite')).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
+  s.stockage.setItem('gyro-gestes-5', JSON.stringify({ exemples: ancienne, attente: 30 }));
+  s.sonner = (g) => sons.push(g.id);
+  s.jeu.apprendre(); s.avancer(1700);
+  for (const g of TROIS) { s.jouer(seance(Array(53).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  const n = (b) => s.bips.filter((x) => x === b).length;
+  assert.strictEqual([n('coup'), n('debut'), n('gesteFini'), n('fin')].join(' '), '150 3 2 1', s.bips.join(' '));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-5')), par = {};
+  for (const e of stocke.exemples) par[e.geste] = (par[e.geste] || 0) + 1;
+  assert.strictEqual(JSON.stringify(par), JSON.stringify({ bas: 50, haut: 50, gauche: 50, droite: ancienne.length }));
+  s.jouer(immobile3s()); sons.length = 0;
+  const attendu = ['bas', 'haut', 'gauche', 'bas', 'haut', 'gauche'];
+  s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
+  assert.ok(sons.length === 6 && attendu.filter((g, i) => sons[i] === g).length >= 5, sons.join(' '));
+});
+
+test('SOLO 3 gestes : une mémoire à 4 gestes (droite appris ailleurs) ne fait jamais sonner « droite »', () => {
+  const s = jeuSimule([], gestesSolo), sons = [];
+  const ancienne = exemples(Array.from({ length: 48 }, (_, k) => QUATRE[k % 4])).map((e) => ({ geste: e.geste, t: e.t, mesures: e.mesures }));
+  s.stockage.setItem('gyro-gestes-5', JSON.stringify({ exemples: ancienne, attente: 30 }));
+  s.sonner = (g) => sons.push(g.id);
+  assert.strictEqual(s.jeu.charger(), true);
+  s.jouer(immobile3s());
+  s.jouer(seance(['bas', 'droite', 'haut', 'droite', 'gauche', 'droite']).ech); s.avancer(s.horloge + 1000);
+  assert.ok(sons.length >= 3 && !sons.includes('droite'), sons.join(' '));
+});
+
+test('SOLO 3 gestes : le retour du poignet après un coup vers la gauche ne sonne pas (5 séances de 6 coups avec retours rapides)', () => {
+  let enTrop = 0, justes = 0;
+  for (let k = 0; k < 5; k++) {
+    const s = jeuSimule([], gestesSolo), sons = []; s.sonner = (g) => sons.push(g.id);
+    s.jeu.apprendre(); s.avancer(1700);
+    for (const g of TROIS) { s.jouer(seance(Array(53).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+    s.jouer(immobile3s()); sons.length = 0;
+    const seq = Array(6).fill('gauche'); s.jouer(seance(seq, { retour: 1 }).ech); s.avancer(s.horloge + 1000);
+    enTrop += Math.max(0, sons.length - seq.length); justes += seq.filter((g, i) => sons[i] === g).length;
+  }
+  // mêmes seuils que pour les 4 gestes (test plus haut)
+  assert.ok(enTrop <= 5, enTrop + ' retour(s) ont sonné');
+  assert.ok(justes >= 25, justes + '/30 coups justes');
+});
+
+test('SOLO 3 gestes, limite connue (vrais coups iPhone) : un coup vers la droite ne sonne presque jamais la caisse claire, mais il sonne (surtout cymbale)', () => {
+  const D = require('./gestes-defaut.js'), trois = D.filter((e) => e.geste !== 'droite');
+  const m = G.entrainer(trois.map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 30) })));
+  const vers = D.filter((e) => e.geste === 'droite').map((e) => m.classer(G.resumer(e.mesures, e.t, 30)));
+  assert.ok(vers.filter((g) => g === 'gauche').length <= 1, vers.join(' '));
+  const ev = G.evaluer(trois, 30);
+  assert.ok(ev.precision >= 0.95, 'bas, haut, gauche par défaut : ' + Math.round(ev.precision * 100) + ' %');
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);

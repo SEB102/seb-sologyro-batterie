@@ -52,12 +52,11 @@
 </head>
 <body>
 <h1>SEB-SOLOGYRO-BATTERIE</h1>
-<div id="etat">Les 4 gestes sont prêts dès le départ ; le téléphone joue lui-même le son de chacun.</div>
+<div id="etat">Les 3 gestes sont prêts dès le départ ; le téléphone joue lui-même le son de chacun.</div>
 <div class="gestes">
   <div style="--c:#e8643c"><b>↓ coup vers le bas</b>grosse caisse</div>
   <div style="--c:#e8c43c"><b>↑ coup vers le haut</b>cymbale</div>
-  <div style="--c:#4c9be8"><b>→ coup vers la droite</b>caisse claire</div>
-  <div style="--c:#b46be8"><b>← coup vers la gauche</b>« Oh ! »</div>
+  <div style="--c:#4c9be8"><b>← coup vers la gauche</b>caisse claire</div>
 </div>
 <button id="demarrer">Toucher pour démarrer</button>
 <div id="flash">—</div>
@@ -75,7 +74,7 @@
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="apprendre" class="secondaire">Réapprendre mes 4 gestes (50 coups de chacun)</button>
+  <button id="apprendre" class="secondaire">Réapprendre mes 3 gestes (50 coups de chacun)</button>
   <button id="diagnostic" class="secondaire">Envoyer l'enregistrement (diagnostic : dernier apprentissage et dernière minute et demie de jeu)</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
@@ -84,19 +83,19 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-22o</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-22p</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261022o"></script>
-<script src="sons.js?v=20261022o"></script>
-<script src="gestes.js?v=20261022o"></script>
-<script src="apprentissage.js?v=20261022o"></script>
-<script src="gestes-defaut.js?v=20261022o"></script>
-<script src="jeu-gestes.js?v=20261022o"></script>
+<script src="detecteur.js?v=20261022p"></script>
+<script src="sons.js?v=20261022p"></script>
+<script src="gestes.js?v=20261022p"></script>
+<script src="apprentissage.js?v=20261022p"></script>
+<script src="gestes-defaut.js?v=20261022p"></script>
+<script src="jeu-gestes.js?v=20261022p"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -125,6 +124,8 @@ const BIPS = { debut: () => bip(880), coup: () => bip(1320, 0, 0.04), gesteFini:
 const jeu = JeuGestes.creerJeu({
   $, seuil: reglages.seuil, biper: (type) => BIPS[type](),
   sonner(geste, force) { if (ctx.state !== 'running') reactiverSon(); sons.instruments[geste.son](force); },   // au cas où l'iPhone l'aurait coupé
+  // SOLO : bas, haut et gauche seulement ; la gauche joue la caisse claire
+  gestes: JeuGestes.GESTES.filter((g) => g.id !== 'droite').map((g) => (g.id === 'gauche' ? { ...g, son: 'Caisse claire', couleur: '#4c9be8' } : g)),
 });
 
 // ---- Sensibilité (curseur à droite = gestes plus légers) ----
