@@ -37,16 +37,33 @@
       if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('coup'); biper('gesteFini'); }
       if (e.type === 'fin') {
         biper('coup'); biper('fin');
+        if (journal) { journal.fin = Math.round(performance.now()); if ($('diagnostic')) $('diagnostic').hidden = false; }
         apprentissage = null;
         ecrire({ exemples: e.exemples, precisions: e.precisions, attente: e.attente });
         charger();
         flash(texte('Appris !', `${e.precisions[Apprentissage.ATTENTES.indexOf(e.attente)]} % de gestes reconnus avec ${e.attente} ms d'attente · à toi de jouer`), '');
       }
     }
+    // Diagnostic : mesures brutes et décisions du dernier apprentissage, envoyées par le bouton « diagnostic » de la page
+    let journal = null;
+    function envoyerJournal() {
+      if (!journal) return;
+      const nom = 'gyro-apprentissage-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
+      const fichier = new File([JSON.stringify(journal)], nom, { type: 'application/json' });
+      // iPhone : feuille de partage (AirDrop vers le Mac, Mail…) ; sinon téléchargement
+      if (navigator.canShare && navigator.canShare({ files: [fichier] })) return navigator.share({ files: [fichier], title: nom }).catch(() => {});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(fichier); a.download = nom; a.click();
+    }
+    if ($('diagnostic')) $('diagnostic').onclick = envoyerJournal;
+
     function apprendre() {
+      journal = { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '', debut: Math.round(performance.now()), seuil: seuilActuel,
+        colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [] };
+      if ($('diagnostic')) $('diagnostic').hidden = false;   // envoyable même si l'apprentissage est abandonné en route
       if (apprentissage) apprentissage.annuler();
       $('precision').hidden = true;
-      apprentissage = Apprentissage.creerApprentissage({ gestes: GESTES, parGeste: PAR_GESTE, signaler: surEvenement });
+      apprentissage = Apprentissage.creerApprentissage({ gestes: GESTES, parGeste: PAR_GESTE,
+        signaler: (e) => { if (journal) journal.evenements.push([Math.round(performance.now()), e.type, e.etape]); surEvenement(e); } });
     }
     function charger() {
       const m = lire();
@@ -74,13 +91,20 @@
       const r = e.rotationRate;
       if (!r || ![r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return null;
       historique.ajouter(t, r, e.acceleration);
+      if (apprentissage && journal && journal.mesures.length < 30000) {
+        const m = historique.mesures[historique.mesures.length - 1];
+        journal.mesures.push([Math.round(t), m.rot.map((x) => Math.round(x * 10) / 10), m.acc.map((x) => Math.round(x * 100) / 100)]);
+      }
       if (declencheur.traiter(r, t)) {
         if (apprentissage) {
           if (apprentissage.ecoute(t)) {
             const a = apprentissage, etape = a.etape;
             // repos : téléphone presque immobile (< 100 °/s) entre 350 et 80 ms avant le déclenchement
             const repos = historique.mesures.filter((m) => m.t >= t - 350 && m.t <= t - 80).every((m) => Math.hypot(...m.rot) < 100);
-            setTimeout(() => a.coup(t, etape, copie(t), repos), FENETRE + 20);   // attendre la fin de la fenêtre de mesure
+            setTimeout(() => {   // attendre la fin de la fenêtre de mesure
+              const mesures = copie(t), resultat = a.coup(t, etape, mesures, repos);
+              if (journal) journal.decisions.push({ t: Math.round(t), etape, repos, resultat, sens: Apprentissage.sensDuCoup(mesures, t).map(Math.round) });
+            }, FENETRE + 20);
           }
         } else if (modele) jouer(t);
       }
