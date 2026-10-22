@@ -235,4 +235,49 @@ test('apprentissage : le jeu de 4 gestes appris (retours ignorés) reconnaît dr
   assert.ok(trouves.filter((g, i) => g === jeu[i].geste).length >= 7, trouves.join(' '));
 });
 
+// ---- Écran du téléphone (jeu-gestes.js) chargé avec un faux écran et une horloge simulée ----
+function jeuSimule() {
+  const vm = require('vm'), fs = require('fs');
+  let horloge = 0; const file = [];
+  const ctx = { performance: { now: () => horloge }, setTimeout: (f, ms) => file.push([horloge + ms, f]), clearTimeout() {}, localStorage: { getItem: () => null, setItem() {} }, Math, JSON };
+  ctx.window = ctx; vm.createContext(ctx);
+  for (const f of ['gestes.js', 'apprentissage.js', 'jeu-gestes.js']) vm.runInContext(fs.readFileSync(__dirname + '/' + f, 'utf8').replace(/typeof module !== 'undefined'/g, 'false'), ctx);
+  const elements = {}, $ = (id) => (elements[id] = elements[id] || { style: {}, innerHTML: '', textContent: '', hidden: false, querySelectorAll: () => [] });
+  const bips = [];
+  const jeu = ctx.JeuGestes.creerJeu({ $, seuil: 216, sonner() {}, biper: (b) => bips.push(b) });
+  const avancer = (t) => { for (;;) { file.sort((a, b) => a[0] - b[0]); if (!file.length || file[0][0] > t) break; const [q, f] = file.shift(); horloge = q; f(); } horloge = t; };
+  const mouvement = (rot, acc = [0, 0, 0]) => jeu.surMouvement({ rotationRate: { alpha: rot[0], beta: rot[1], gamma: rot[2] }, acceleration: { x: acc[0], y: acc[1], z: acc[2] } }, horloge);
+  // joue des échantillons (t relatif) à partir de maintenant
+  // arret() vrai → on s'arrête (comme l'utilisateur aux 2 bips de fin de geste)
+  const jouer = (ech, arret = () => false) => { const h0 = horloge; for (const e of ech) { if (arret()) break; avancer(h0 + e.t); mouvement(e.rot, e.acc); } };
+  const finDeGeste = () => { const n = bips.filter((b) => b === 'gesteFini' || b === 'fin').length; return () => bips.filter((b) => b === 'gesteFini' || b === 'fin').length > n; };
+  return { jeu, bips, avancer, jouer, finDeGeste, get horloge() { return horloge; } };
+}
+
+test('apprentissage : 15 petits bips par geste (le 15e suivi des 2 bips de fin de geste)', () => {
+  const s = jeuSimule();
+  s.jeu.apprendre(); s.avancer(1700);
+  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  const n = (b) => s.bips.filter((x) => x === b).length;
+  assert.deepStrictEqual([n('debut'), n('coup'), n('gesteFini'), n('fin')], [4, 60, 3, 1], s.bips.join(' '));
+  assert.ok(s.bips.indexOf('gesteFini') > 0 && s.bips[s.bips.indexOf('gesteFini') - 1] === 'coup', 'le 15e coup doit biper avant les 2 bips');
+});
+
+test('apprentissage : un mouvement d\'installation juste après le départ (sans repos avant) ne fixe pas le sens du geste', () => {
+  const s = jeuSimule();
+  s.jeu.apprendre(); s.avancer(1400);
+  // on remet le téléphone en position : agitation continue, puis un mouvement vif VERS LE HAUT (l'inverse du geste « bas »)
+  const agitation = []; for (let t = 0; t < 400; t += 1000 / 60) agitation.push({ t, rot: [entre(-150, 150), entre(-150, 150), entre(-150, 150)], acc: [0, 0, 0] });
+  s.jouer(agitation);
+  s.jouer(seance(['haut'], { calme: 0 }).ech);
+  // puis les coups vers le bas, avec leurs retours rapides
+  s.jouer(seance(Array(17).fill('bas'), { retour: 1 }).ech, s.finDeGeste());
+  const m = s.jeu.exemplesEnCours();
+  assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 15, s.bips.join(' '));
+  // chaque exemple appris tourne dans le sens du coup « bas » simulé (pas de l'installation ni des retours)
+  const { ech } = seance(['bas'], {}), k = ech.findIndex((e) => Math.hypot(...e.rot) > 216), bas = ech[k].rot;
+  for (const e of m) assert.ok(A.sensDuCoup(e.mesures, e.t).reduce((a, x, i) => a + x * bas[i], 0) > 0, 'exemple de « bas » dans le mauvais sens');
+  assert.strictEqual(m.length, 15);
+});
+
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);

@@ -33,9 +33,10 @@
       if (e.type === 'preparation') flash(texte('Prépare-toi…', 'tiens le téléphone comme pour jouer'));
       if (e.type === 'debut') { consigne(e); biper('debut'); }
       if (e.type === 'coup') { consigne(e); biper('coup'); }   // on entend chaque coup compté, sans regarder l'écran
-      if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('gesteFini'); }
+      // le dernier coup d'un geste bipe aussi, puis les bips de fin (décalés de 0,15 s par la page)
+      if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('coup'); biper('gesteFini'); }
       if (e.type === 'fin') {
-        biper('fin');
+        biper('coup'); biper('fin');
         apprentissage = null;
         ecrire({ exemples: e.exemples, precisions: e.precisions, attente: e.attente });
         charger();
@@ -77,7 +78,9 @@
         if (apprentissage) {
           if (apprentissage.ecoute(t)) {
             const a = apprentissage, etape = a.etape;
-            setTimeout(() => a.coup(t, etape, copie(t)), FENETRE + 20);   // attendre la fin de la fenêtre de mesure
+            // repos : téléphone presque immobile (< 100 °/s) entre 350 et 80 ms avant le déclenchement
+            const repos = historique.mesures.filter((m) => m.t >= t - 350 && m.t <= t - 80).every((m) => Math.hypot(...m.rot) < 100);
+            setTimeout(() => a.coup(t, etape, copie(t), repos), FENETRE + 20);   // attendre la fin de la fenêtre de mesure
           }
         } else if (modele) jouer(t);
       }
@@ -86,7 +89,8 @@
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
     function commencer() { if (charger()) flash(texte('Joue !', 'tes gestes appris sont repris'), ''); else apprendre(); }
-    return { surMouvement, apprendre, charger, commencer, changerSeuil, get enApprentissage() { return !!apprentissage; } };
+    return { surMouvement, apprendre, charger, commencer, changerSeuil, get enApprentissage() { return !!apprentissage; },
+      exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }
 
   racine.JeuGestes = { creerJeu, GESTES, CLE };

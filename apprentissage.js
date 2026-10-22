@@ -19,11 +19,15 @@
     return {
       get etape() { return a.etape; },
       get fini() { return a.fini; },
+      get exemples() { return a.exemples; },
       // un coup détecté à l'instant t est-il à prendre ? (pas pendant la préparation ni la pause entre deux gestes)
       ecoute: (t) => !a.fini && t >= a.debut,
-      // coup détecté à t pendant l'étape « etape », avec les mesures de toute sa fenêtre → 'compte' | 'retour' | 'deborde'
-      coup(t, etape, mesures) {
+      // coup détecté à t pendant l'étape « etape », avec les mesures de toute sa fenêtre → 'compte' | 'retour' | 'deborde' | 'pasDeRepos'
+      // repos : le téléphone était immobile juste avant. Le 1er coup d'un geste fixe son sens : il doit partir du repos, sinon un
+      // mouvement d'installation (remettre le téléphone en main juste après le départ) servirait de référence et tout s'inverserait.
+      coup(t, etape, mesures, repos = true) {
         if (a.fini || etape !== a.etape) return 'deborde';
+        if (!a.sens && !repos) return 'pasDeRepos';
         const sens = sensDuCoup(mesures, t);
         if (a.sens && sens.reduce((s, x, i) => s + x * a.sens[i], 0) < 0) return 'retour';
         const n = Math.hypot(...sens) || 1;
