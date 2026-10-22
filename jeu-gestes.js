@@ -1,5 +1,5 @@
-// Partie commune aux pages du téléphone (SOLO a en plus l'option « gestes » : bas, haut et gauche seulement) : exemples par défaut des gestes (gestes-defaut.js),
-// apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage des 4), choix de l'attente, moment du son, jeu. La page dit seulement où sonne le son :
+// Partie commune aux pages du téléphone (identique dans les trois apps) : exemples par défaut des gestes (gestes-defaut.js),
+// apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage des 3), choix de l'attente, moment du son, jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
 //   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
 // Il faut gestes.js, apprentissage.js (et gestes-defaut.js) avant ce fichier.
@@ -7,25 +7,23 @@
   const GESTES = [
     { id: 'bas', nom: 'coup vers le BAS ↓', son: 'Grosse caisse', couleur: '#e8643c' },
     { id: 'haut', nom: 'coup vers le HAUT ↑', son: 'Cymbale', couleur: '#e8c43c' },
-    { id: 'droite', nom: 'coup vers la DROITE →', son: 'Caisse claire', couleur: '#4c9be8' },
-    { id: 'gauche', nom: '← coup vers la GAUCHE', son: 'Wobble « Ho » (fermé)', couleur: '#b46be8' },
+    { id: 'gauche', nom: '← coup vers la GAUCHE', son: 'Caisse claire', couleur: '#4c9be8' },
   ];
-  const PAR_GESTE = 50, FENETRE = 200;   // ms de mesures gardées après chaque coup
+  const PAR_GESTE = 10, FENETRE = 200;   // ms de mesures gardées après chaque coup
   // Mêmes gestes pour les trois apps (même adresse seb102.github.io) : appris une fois, valables partout
-  // gyro-gestes-5 : dernière mémoire en date (gyro-gestes-4 contient encore l'apprentissage du 22/10 16 h 44, « droite » à l'envers) ;
-  // les mouvements « rien » qu'elle contient sont ignorés
-  const CLE = 'gyro-gestes-5';
+  // gyro-gestes-6 : mémoire des 3 gestes (22/10/2026 au soir) ; les apprentissages d'avant (gyro-gestes-5 et plus anciens, à
+  // 4 gestes) sont ignorés : les exemples et l'attente par défaut s'appliquent dès l'ouverture
+  const CLE = 'gyro-gestes-6';
   const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || '{}'); } catch { return {}; } };
   const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
   // nomDuSon(geste, i) : nom affiché (version multi : le son choisi sur l'ordinateur pour ce téléphone)
   // parDefaut : exemples fournis d'office ({ geste, t, mesures })
-  // gestes : ceux qui jouent (GESTES par défaut), avec leur son ; les exemples des autres sont ignorés, et gardés en mémoire
-  // pour les apps qui les jouent (même mémoire pour les trois apps)
-  function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut: tousParDefaut = racine.GESTES_DEFAUT || [], gestes = GESTES, parGeste = PAR_GESTE }) {
-    const actifs = new Set(gestes.map((g) => g.id)), parDefaut = tousParDefaut.filter((e) => actifs.has(e.geste));
+  // attenteDefaut : attente tant que rien n'est appris (celle de la séance qui a fourni les exemples par défaut)
+  function creerJeu({ $, seuil, sonner, biper, nomDuSon = (g) => g.son, parDefaut = racine.GESTES_DEFAUT || [], attenteDefaut = racine.ATTENTE_DEFAUT }) {
+    const gestes = GESTES, parGeste = PAR_GESTE;
     const parDefautIds = new Set(parDefaut.map((e) => e.geste));
-    // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend les 4
+    // gestes à apprendre : ceux sans exemples par défaut ; s'ils en ont tous, le bouton réapprend les 3
     const sansDefaut = gestes.filter((g) => !parDefautIds.has(g.id));
     const A_APPRENDRE = sansDefaut.length ? sansDefaut : gestes;
     const aApprendre = new Set(A_APPRENDRE.map((g) => g.id));
@@ -54,71 +52,45 @@
       if (e.type === 'gesteFini') { flash(texte('C\'est noté !', `geste suivant : ${e.suivant.nom}`)); biper('coup'); biper('gesteFini'); }
       if (e.type === 'fin') {
         biper('coup'); biper('fin');
-        if (journal) journal.fin = Math.round(performance.now());
         apprentissage = null;
         const { precisions, attente: choix } = Apprentissage.choisirAttente(tousLesExemples(e.exemples));   // avec haut/bas par défaut
-        const autres = (lire().exemples || []).filter((x) => !actifs.has(x.geste) && GESTES.some((g) => g.id === x.geste));   // gestes que cette app ne joue pas
-        ecrire({ exemples: [...e.exemples, ...autres], attente: choix });
+        ecrire({ exemples: e.exemples, attente: choix });
         charger();
         flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus avec ${choix} ms d'attente · à toi de jouer`), '');
       }
     }
-    // Diagnostic : mesures brutes et décisions du dernier apprentissage, et de la dernière minute et demie de jeu (sons joués,
-    // mouvements rendus muets), envoyées par le bouton « diagnostic » de la page
-    let journal = null;
-    const journalJeu = { duree: 90000, mesures: [], coups: [] };
-    function noterJeu(t, mesure, coup) {
-      if (mesure) journalJeu.mesures.push(mesure);
-      if (coup) journalJeu.coups.push(coup);
-      // les plus anciennes partent par paquets (retirer une mesure à chaque mesure coûterait trop sur un téléphone)
-      if (journalJeu.mesures.length > 6000) journalJeu.mesures.splice(0, journalJeu.mesures.findIndex((m) => m[0] >= t - journalJeu.duree));
-      if (journalJeu.coups.length > 400) journalJeu.coups.splice(0, journalJeu.coups.findIndex((c) => c.t >= t - journalJeu.duree));
-    }
-    function envoyerJournal() {
-      if (!journal && !journalJeu.coups.length) return flash(texte('Rien à envoyer pour l\'instant', `joue quelques coups, ou appuie sur « Réapprendre mes ${gestes.length} gestes »`), '');
-      const nom = 'gyro-diagnostic-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
-      const contenu = { ...(journal || { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '' }), attente, seuil: seuilActuel, jeu: journalJeu };
-      const fichier = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
-      // iPhone : feuille de partage (AirDrop vers le Mac, Mail…) ; sinon téléchargement
-      if (navigator.canShare && navigator.canShare({ files: [fichier] })) return navigator.share({ files: [fichier], title: nom }).catch(() => {});
-      const a = document.createElement('a'); a.href = URL.createObjectURL(fichier); a.download = nom; a.click();
-    }
-    if ($('diagnostic')) $('diagnostic').onclick = envoyerJournal;
 
     function apprendre() {
-      journal = { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '', debut: Math.round(performance.now()), seuil: seuilActuel,
-        colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [] };
       if (apprentissage) apprentissage.annuler();
       $('precision').hidden = true;
       apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste,
-        signaler: (e) => { if (journal) journal.evenements.push([Math.round(performance.now()), e.type, e.etape]); surEvenement(e); } });
+        signaler: surEvenement });
     }
     function charger() {
       const m = lire(), exemples = tousLesExemples(m.exemples);
       if (!gestes.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
       const { precisions, attente: choix } = Apprentissage.choisirAttente(exemples);
-      attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : choix;
+      attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : Apprentissage.ATTENTES.includes(attenteDefaut) ? attenteDefaut : choix;
       modele = Gestes.entrainer(exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
       $('attentes').innerHTML = Apprentissage.ATTENTES.map((a, i) => `<button data-a="${a}" class="${a === attente ? 'actif' : ''}">${a} ms<br>${precisions[i]} %</button>`).join('');
       $('attentes').querySelectorAll('button').forEach((b) => (b.onclick = () => { const o = lire(); o.attente = Number(b.dataset.a); ecrire(o); charger(); }));
       $('precision').hidden = false;
       return true;
     }
-    // Retour muet pour droite / gauche : le retour du poignet après un coup vers la droite est un mouvement vers la gauche,
+    // Retour muet pour gauche : le retour du poignet après un coup latéral est un mouvement en sens inverse,
     // presque aussi vif que le coup (iPhone, 22/10/2026 : 0,13 à 0,73 s après le coup) ; il jouerait « Oh ! ». Après un coup
-    // droite ou gauche, un mouvement en sens INVERSE dans les RETOUR_MUET ms ne sonne donc pas, quel que soit le son reconnu.
+    // vers la gauche, un mouvement en sens INVERSE dans les RETOUR_MUET ms ne sonne donc pas, quel que soit le son reconnu.
     // Haut et bas ne sont pas concernés (leurs retours sont nettement plus faibles et passent bien).
     const RETOUR_MUET = 600;
-    let dernierLateral = null;   // { t, sens } du dernier coup droite / gauche joué
+    let dernierLateral = null;   // { t, sens } du dernier coup vers la gauche joué
     // delai : temps à attendre avant de reconnaître le geste (l'attente choisie ; 0 si ses mesures sont déjà là)
     function jouer(t, sens, delai = attente) {
       const muet = dernierLateral && t - dernierLateral.t < RETOUR_MUET && sens.reduce((s, x, i) => s + x * dernierLateral.sens[i], 0) < 0;
-      if (muet) return noterJeu(t, null, { t: Math.round(t), rot: sens.map(Math.round), muet: 'retour latéral' });
+      if (muet) return;
       setTimeout(() => {
         const id = modele.classer(Gestes.resumer(historique.mesures, t, attente));
-        noterJeu(t, null, { t: Math.round(t), rot: sens.map(Math.round), geste: id, attente });
         const i = gestes.findIndex((g) => g.id === id), g = gestes[i];
-        dernierLateral = id === 'droite' || id === 'gauche' ? { t, sens } : null;
+        dernierLateral = id === 'gauche' ? { t, sens } : null;
         sonner(g, Apprentissage.force(historique.mesures, t, seuilActuel));
         $('flash').textContent = nomDuSon(g, i).toUpperCase();
         $('flash').style.background = g.couleur; $('flash').style.color = '#111';
@@ -154,10 +126,7 @@
       const inverse = -rv.reduce((s, x, i) => s + x * e.u[i], 0);
       const net = e.pic >= ARRET.picMin && ((v < ARRET.chute * e.pic && t - e.tPic <= ARRET.delai) || (inverse >= ARRET.rebond * e.pic && t - e.tPic <= ARRET.rebondDelai));
       if (net) { enCours = null; return jouer(e.t, e.sens, 0); }
-      if (t - e.tPic > ARRET.rebondDelai || t - e.t > ARRET.max) {
-        enCours = null;
-        noterJeu(t, null, { t: Math.round(e.t), rot: e.sens.map(Math.round), muet: 'pas d\'arrêt net', pic: Math.round(e.pic) });
-      }
+      if (t - e.tPic > ARRET.rebondDelai || t - e.t > ARRET.max) enCours = null;   // pas d'arrêt net : muet
     }
     // e : événement devicemotion ; renvoie la vitesse de rotation totale (°/s) pour l'affichage, ou null sans gyroscope
     function surMouvement(e, t = performance.now()) {
@@ -165,10 +134,6 @@
       if (!r || ![r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return null;
       historique.ajouter(t, r, e.acceleration);
       if (enCours && !apprentissage) suivreArret(r, t);
-      const derniere = historique.mesures[historique.mesures.length - 1];
-      const mesure = [Math.round(t), derniere.rot.map((x) => Math.round(x * 10) / 10), derniere.acc.map((x) => Math.round(x * 100) / 100)];
-      if (apprentissage && journal && journal.mesures.length < 30000) journal.mesures.push(mesure);
-      else if (!apprentissage && modele) noterJeu(t, mesure);
       if (declencheur.traiter(r, t)) {
         if (apprentissage) {
           if (apprentissage.ecoute(t)) {
@@ -176,8 +141,7 @@
             // repos : téléphone presque immobile (< 100 °/s) entre 350 et 80 ms avant le déclenchement
             const repos = historique.mesures.filter((m) => m.t >= t - 350 && m.t <= t - 80).every((m) => Math.hypot(...m.rot) < 100);
             setTimeout(() => {   // attendre la fin de la fenêtre de mesure
-              const mesures = copie(t), resultat = a.coup(t, etape, mesures, repos);
-              if (journal) journal.decisions.push({ t: Math.round(t), etape, repos, resultat, sens: Apprentissage.sensDuCoup(mesures, t).map(Math.round) });
+              a.coup(t, etape, copie(t), repos);
             }, FENETRE + 20);
           }
         } else if (modele) {
