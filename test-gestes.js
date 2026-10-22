@@ -235,6 +235,12 @@ test('apprentissage : le jeu de 4 gestes appris (retours ignorés) reconnaît dr
   assert.ok(trouves.filter((g, i) => g === jeu[i].geste).length >= 7, trouves.join(' '));
 });
 
+// Procédure du premier coup simulée : mouvement lent (35°) dans la direction d'un coup simulé du geste, puis retour lent
+function procedureLente(g) {
+  const { ech } = seance([g], {}), e = ech.reduce((a, b) => (Math.hypot(...b.rot) > Math.hypot(...a.rot) ? b : a)), n = Math.hypot(...e.rot);
+  return mouvementLent(e.rot.map((x) => x / n), [[600, 0], [800, 35], [400, 0], [800, -35], [500, 0]]);
+}
+
 // ---- Écran du téléphone (jeu-gestes.js) chargé avec un faux écran et une horloge simulée ----
 function jeuSimule(parDefaut = []) {
   const vm = require('vm'), fs = require('fs');
@@ -258,7 +264,8 @@ function jeuSimule(parDefaut = []) {
 test('apprentissage : 15 petits bips par geste (le 15e suivi des 2 bips de fin de geste)', () => {
   const s = jeuSimule();
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of QUATRE) { for (let essai = 0; essai < 3 && (essai === 0 || s.jeu.attendProcedure); essai++) s.jouer(procedureLente(g));   // refaite si refusée, comme le ferait l'utilisateur
+    s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   const n = (b) => s.bips.filter((x) => x === b).length;
   assert.deepStrictEqual([n('debut'), n('coup'), n('gesteFini'), n('fin')], [4, 60, 3, 1], s.bips.join(' '));
   assert.ok(s.bips.indexOf('gesteFini') > 0 && s.bips[s.bips.indexOf('gesteFini') - 1] === 'coup', 'le 15e coup doit biper avant les 2 bips');
@@ -272,7 +279,8 @@ test('apprentissage : un mouvement d\'installation juste après le départ (sans
   s.jouer(agitation);
   s.jouer(seance(['haut'], { calme: 0 }).ech);
   // puis les coups vers le bas, avec leurs retours rapides
-  s.jouer(seance(Array(17).fill('bas'), { retour: 1 }).ech, s.finDeGeste());
+  for (let essai = 0; essai < 3 && (essai === 0 || s.jeu.attendProcedure); essai++) s.jouer(procedureLente('bas'));   // refaite si refusée, comme le ferait l'utilisateur
+    s.jouer(seance(Array(17).fill('bas'), { retour: 1 }).ech, s.finDeGeste());
   const m = s.jeu.exemplesEnCours();
   assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 15, s.bips.join(' '));
   // chaque exemple appris tourne dans le sens du coup « bas » simulé (pas de l'installation ni des retours)
@@ -321,7 +329,8 @@ function jeuAppris() {
   const s = jeuSimule(), sons = [];
   s.sonner = (g) => sons.push(g.id);
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of QUATRE) { for (let essai = 0; essai < 3 && (essai === 0 || s.jeu.attendProcedure); essai++) s.jouer(procedureLente(g));   // refaite si refusée, comme le ferait l'utilisateur
+    s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   // téléphone immobile 3 s (un vrai téléphone envoie ses mesures en continu)
   const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
   s.jouer(immobile);
@@ -376,11 +385,13 @@ test('haut/bas par défaut : l\'apprentissage ne demande que droite et gauche (2
   s.sonner = (g) => sons.push(g.id);
   assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'droite gauche');
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of ['droite', 'gauche']) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of ['droite', 'gauche']) { for (let essai = 0; essai < 3 && (essai === 0 || s.jeu.attendProcedure); essai++) s.jouer(procedureLente(g));   // refaite si refusée, comme le ferait l'utilisateur
+    s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   const n = (b) => s.bips.filter((x) => x === b).length;
   assert.deepStrictEqual([n('debut'), n('coup'), n('gesteFini'), n('fin')], [2, 30, 1, 1], s.bips.join(' '));
   const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
   s.jouer(immobile);
+  sons.length = 0;   // le retour du dernier coup de l'apprentissage peut sonner une fois : il ne compte pas ici
   const attendu = ['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche'];
   s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
@@ -409,12 +420,14 @@ test('4 gestes par défaut : on joue sans rien apprendre ; « Réapprendre » re
   assert.strictEqual(s.jeu.charger(), true);   // rien à apprendre
   assert.strictEqual(s.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'bas haut droite gauche');
   s.jeu.apprendre(); s.avancer(1700);
-  for (const g of QUATRE) { s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  for (const g of QUATRE) { for (let essai = 0; essai < 3 && (essai === 0 || s.jeu.attendProcedure); essai++) s.jouer(procedureLente(g));   // refaite si refusée, comme le ferait l'utilisateur
+    s.jouer(seance(Array(17).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
   assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 60, s.bips.join(' '));
   const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-5'));
   assert.strictEqual([...new Set(stocke.exemples.map((e) => e.geste))].join(' '), 'bas haut droite gauche');
   const immobile = []; for (let t = 0; t < 3000; t += 1000 / 60) immobile.push({ t, rot: [entre(-3, 3), entre(-3, 3), entre(-3, 3)], acc: [0, 0, 0] });
   s.jouer(immobile);
+  sons.length = 0;   // le retour du dernier coup de l'apprentissage peut sonner une fois : il ne compte pas ici
   const attendu = ['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche'];
   s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
@@ -451,6 +464,7 @@ test('moment du son « arrêt » : un coup qui s\'arrête net sonne ; un mouveme
 test('moment du son « arrêt » : le son part à l\'arrêt (après le sommet), et une suite de vrais coups est jouée en entier', () => {
   const { s, sons } = jeuAppris();
   const instants = []; s.sonner = (g) => { sons.push(g.id); instants.push(s.horloge); };
+  sons.length = 0;   // un son de la fin de l'apprentissage simulé ne doit pas compter
   s.jeu.changerMoment('arret');
   // coup du simulateur : le geste part à 450 ms, son sommet de vitesse est à mi-parcours (~70 ms plus tard)
   const h0 = s.horloge;
@@ -474,6 +488,72 @@ test('mémoire enregistrée par la version avec « rien » (22/10, 2026-10-22l) 
   assert.strictEqual(s.jeu.charger(), true);
   s.jouer(seance(['bas', 'haut', 'droite', 'gauche', 'bas', 'haut', 'droite', 'gauche']).ech); s.avancer(s.horloge + 1000);
   assert.strictEqual(sons.length, 8, sons.join(' '));
+});
+
+// ---- Procédure du premier coup : mouvement LENT dans la direction du geste, puis retour lent ; elle fixe la référence ----
+// rotation autour de « axe » (unitaire), en segments [durée ms, angle °] : angle > 0 aller, < 0 retour, 0 immobile
+function mouvementLent(axe, segments, hz = 60) {
+  const ech = []; let t = 0;
+  for (const [duree, angle] of segments) {
+    for (let x = 0; x < duree; x += 1000 / hz) {
+      const w = angle ? angle * Math.PI / (2 * duree / 1000) * Math.sin(Math.PI * x / duree) : 0;   // profil en cloche, ∫ = angle
+      ech.push({ t: t + x, rot: axe.map((c) => c * w + entre(-3, 3)), acc: [0, 0, 0] });
+    }
+    t += duree;
+  }
+  return ech;
+}
+const procedureSur = (ech) => { const p = A.creerProcedure(); let r = null; for (const e of ech) { const x = p.traiter(e.rot, e.t); if (x) r = x; if (r && r.ok) break; } return r; };
+const AXE = [0, 0, -1];
+
+test('procédure : aller lent de 35° puis retour lent → acceptée, référence dans le sens de l\'aller', () => {
+  const r = procedureSur(mouvementLent(AXE, [[600, 0], [700, 35], [300, 0], [700, -35], [600, 0]]));
+  assert.ok(r && r.ok, JSON.stringify(r));
+  assert.ok(r.sens.reduce((s, x, i) => s + x * AXE[i], 0) > 0.95, r.sens.join(' '));
+});
+
+test('procédure : refusée si trop rapide, trop petite, sans retour, ou pas droite (avec la raison)', () => {
+  assert.strictEqual(procedureSur(mouvementLent(AXE, [[600, 0], [120, 35], [300, 0], [700, -35], [600, 0]])).raison, 'trop rapide');
+  assert.strictEqual(procedureSur(mouvementLent(AXE, [[600, 0], [700, 12], [300, 0], [700, -12], [600, 0]])).raison, 'trop petit');
+  assert.strictEqual(procedureSur(mouvementLent(AXE, [[600, 0], [700, 35], [3500, 0]])).raison, 'pas de retour');
+  // zigzag : moitié autour d'un axe, moitié autour d'un autre
+  const zig = [...mouvementLent([0, 0, -1], [[600, 0], [350, 20]]), ...mouvementLent([1, 0, 0], [[350, 20]]).map((e) => ({ ...e, t: e.t + 950 }))];
+  const fin = mouvementLent(AXE, [[300, 0], [700, -30], [600, 0]]).map((e) => ({ ...e, t: e.t + 1300 }));
+  assert.strictEqual(procedureSur([...zig, ...fin]).raison, 'pas droit');
+});
+
+test('procédure : élan lent puis coup vif (l\'erreur du 22/10 16 h 44) → refusée, le coup vif n\'est pas un retour lent', () => {
+  const r = procedureSur(mouvementLent(AXE, [[600, 0], [700, -30], [200, 0], [130, 45], [600, 0]]));
+  assert.ok(r && !r.ok, JSON.stringify(r));
+  assert.strictEqual(r.raison, 'retour trop rapide');
+});
+
+test('procédure : il faut partir d\'une position immobile (agitation continue → rien ne se passe)', () => {
+  const ech = []; for (let t = 0; t < 3000; t += 1000 / 60) ech.push({ t, rot: [entre(-90, 90), entre(-90, 90), entre(-90, 90)], acc: [0, 0, 0] });
+  const r = procedureSur(ech);
+  assert.ok(!r || !r.ok, JSON.stringify(r));
+});
+
+test('apprentissage avec procédure : aucun coup compté avant la référence ; garde-fou si elle est trop proche d\'un geste déjà appris', () => {
+  const evts = [];
+  const app = A.creerApprentissage({ gestes: [{ id: 'bas' }, { id: 'haut' }], parGeste: 2, procedure: true, signaler: (e) => evts.push(e.type), maintenant: () => 0, minuterie: (f) => f() });
+  const m = (sens) => [0, 20, 40, 60].map((t) => ({ t, rot: sens.map((x) => x * 300), acc: [0, 0, 0] }));
+  assert.strictEqual(app.coup(0, 0, m([0, 0, -1])), 'sansReference');
+  assert.ok(app.fixerReference([0, 0, -1], 0).ok);
+  assert.strictEqual(app.coup(0, 0, m([0, 0, 1])), 'retour');     // sens inverse de la référence
+  assert.strictEqual(app.coup(0, 0, m([0, 0, -1])), 'compte');
+  assert.strictEqual(app.coup(0, 0, m([0.2, 0, -1])), 'compte');  // fin du geste « bas »
+  // « haut » fait par erreur vers le bas : refusé, trop proche de « bas »
+  const r = app.fixerReference([0.1, 0, -1], 0);
+  assert.ok(!r.ok && /bas/.test(r.raison), JSON.stringify(r));
+  assert.ok(app.fixerReference([0, 0, 1], 0).ok);
+  assert.ok(evts.indexOf('debut') > evts.indexOf('procedure'), evts.join(' '));
+});
+
+test('procédure : une main qui tremble un peu (±25 °/s) à l\'arrêt et pendant le mouvement ne l\'empêche pas de réussir', () => {
+  const ech = mouvementLent(AXE, [[600, 0], [700, 35], [400, 0], [700, -35], [600, 0]]).map((e) => ({ ...e, rot: e.rot.map((x) => x + entre(-14, 14)) }));
+  const r = procedureSur(ech);
+  assert.ok(r && r.ok, JSON.stringify(r));
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
