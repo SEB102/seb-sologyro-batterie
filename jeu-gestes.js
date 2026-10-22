@@ -10,7 +10,7 @@
     { id: 'droite', nom: 'coup vers la DROITE →', son: 'Caisse claire', couleur: '#4c9be8' },
     { id: 'gauche', nom: '← coup vers la GAUCHE', son: 'Wobble « Ho » (fermé)', couleur: '#b46be8' },
   ];
-  const PAR_GESTE = 15, FENETRE = 200;   // ms de mesures gardées après chaque coup
+  const PAR_GESTE = 50, FENETRE = 200;   // ms de mesures gardées après chaque coup
   // Mêmes gestes pour les trois apps (même adresse seb102.github.io) : appris une fois, valables partout
   // gyro-gestes-5 : dernière mémoire en date (gyro-gestes-4 contient encore l'apprentissage du 22/10 16 h 44, « droite » à l'envers) ;
   // les mouvements « rien » qu'elle contient sont ignorés
@@ -45,7 +45,6 @@
 
     function surEvenement(e) {
       if (e.type === 'preparation') flash(texte('Prépare-toi…', 'tiens le téléphone comme pour jouer'));
-      if (e.type === 'procedure') { procedure = Apprentissage.creerProcedure(); consigneProcedure(e.geste, e.etape); }
       if (e.type === 'debut') { consigne(e); biper('debut'); }
       if (e.type === 'coup') { consigne(e); biper('coup'); }   // on entend chaque coup compté, sans regarder l'écran
       // le dernier coup d'un geste bipe aussi, puis les bips de fin (décalés de 0,15 s par la page)
@@ -82,38 +81,12 @@
     }
     if ($('diagnostic')) $('diagnostic').onclick = envoyerJournal;
 
-    // Procédure du premier coup de chaque geste : mouvement LENT dans la direction du geste, puis retour lent ; pas de bip
-    // tant qu'elle n'est pas réussie (le 1er bip la confirme), la raison d'un échec s'affiche
-    const VERS = { bas: 'vers le BAS ↓', haut: 'vers le HAUT ↑', droite: 'vers la DROITE →', gauche: 'vers la GAUCHE ←' };
-    const RAISONS = {
-      'trop rapide': 'trop rapide : fais-le lentement (environ 1 s)', 'trop petit': 'pas assez ample : environ 30°',
-      'pas droit': 'pas assez droit : un seul mouvement, dans une seule direction', 'pas de retour': 'reviens lentement à ta position de départ',
-      'retour trop rapide': 'le retour doit être lent lui aussi (pas un coup)', 'retour incomplet': 'reviens jusqu\'à ta position de départ',
-      'trop long': 'trop long : un mouvement d\'environ 1 s',
-    };
-    let procedure = null, gesteProcedure = null, etapeProcedure = 0;
-    function consigneProcedure(geste, etape, raison) {
-      gesteProcedure = geste; etapeProcedure = etape;
-      flash(texte(`Geste ${etape + 1} sur ${A_APPRENDRE.length} : ${geste.nom}`,
-        `D'abord, immobile, puis <b>lentement</b> ${VERS[geste.id]} (environ 30°), et reviens lentement. Le bip confirme, puis fais tes ${PAR_GESTE} coups.`,
-        raison ? `<div style="font-size:16px;margin-top:8px;color:#f9a">À refaire : ${raison}</div>` : ''));
-    }
-    function suivreProcedure(r, t) {
-      const res = procedure.traiter(r, t);
-      if (!res) return;
-      if (journal) journal.procedures.push({ t: Math.round(t), etape: etapeProcedure, ...res, sens: res.sens && res.sens.map((x) => Math.round(x * 100) / 100) });
-      if (!res.ok) return consigneProcedure(gesteProcedure, etapeProcedure, RAISONS[res.raison] || res.raison);
-      const f = apprentissage.fixerReference(res.sens, t);   // le bip de début vient de là
-      // refus : soit ce geste-ci est fait dans le mauvais sens, soit c'est le geste déjà appris qui l'avait été
-      if (!f.ok) { procedure = Apprentissage.creerProcedure(); consigneProcedure(gesteProcedure, etapeProcedure, `${f.raison} : fais-le ${VERS[gesteProcedure.id]} ; si c'est « ${f.proche} » qui avait été fait dans le mauvais sens, touche « Réapprendre »`); }
-    }
-
     function apprendre() {
       journal = { appareil: typeof navigator !== 'undefined' ? navigator.userAgent : '', debut: Math.round(performance.now()), seuil: seuilActuel,
-        colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [], procedures: [] };
+        colonnes: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], mesures: [], decisions: [], evenements: [] };
       if (apprentissage) apprentissage.annuler();
       $('precision').hidden = true;
-      apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste: PAR_GESTE, procedure: true,
+      apprentissage = Apprentissage.creerApprentissage({ gestes: A_APPRENDRE, parGeste: PAR_GESTE,
         signaler: (e) => { if (journal) journal.evenements.push([Math.round(performance.now()), e.type, e.etape]); surEvenement(e); } });
     }
     function charger() {
@@ -188,7 +161,6 @@
       if (!r || ![r.alpha, r.beta, r.gamma].some((v) => typeof v === 'number')) return null;
       historique.ajouter(t, r, e.acceleration);
       if (enCours && !apprentissage) suivreArret(r, t);
-      if (apprentissage && apprentissage.attendReference && procedure) suivreProcedure([r.alpha || 0, r.beta || 0, r.gamma || 0], t);
       const derniere = historique.mesures[historique.mesures.length - 1];
       const mesure = [Math.round(t), derniere.rot.map((x) => Math.round(x * 10) / 10), derniere.acc.map((x) => Math.round(x * 100) / 100)];
       if (apprentissage && journal && journal.mesures.length < 30000) journal.mesures.push(mesure);
@@ -215,7 +187,7 @@
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
     function commencer() { if (charger()) flash(texte('Joue !', 'les 4 gestes sont prêts'), ''); else apprendre(); }
-    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, get attendProcedure() { return !!(apprentissage && apprentissage.attendReference); }, A_APPRENDRE,
+    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, A_APPRENDRE,
       exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }
 
