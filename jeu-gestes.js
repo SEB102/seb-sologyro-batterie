@@ -13,7 +13,10 @@
   // Mêmes gestes pour les trois apps (même adresse seb102.github.io) : appris une fois, valables partout
   // gyro-gestes-6 : mémoire des 3 gestes (22/10/2026 au soir) ; les apprentissages d'avant (gyro-gestes-5 et plus anciens, à
   // 4 gestes) sont ignorés : les exemples et l'attente par défaut s'appliquent dès l'ouverture
-  const CLE = 'gyro-gestes-6';
+  // SOLO (23/10/2026) : mémoire propre, gyro-solo-gestes-7, qui CUMULE les apprentissages (au plus MAX_APPRIS coups par geste,
+  // les plus récents) ; l'apprentissage de SOLO du 23/10 au matin est déjà dans ses exemples par défaut, celui des autres apps
+  // (gyro-gestes-6) n'est pas repris
+  const CLE = 'gyro-solo-gestes-7', MAX_APPRIS = 50;
   // Gaucher : téléphone dans la main gauche, tenu en miroir de la main droite (écran vers la paume, haut du téléphone du même
   // côté ; c'est donc l'autre grand côté qui est en bas). Ses mouvements sont l'image dans un miroir de ceux d'un droitier :
   // ramenés en droitier, la rotation autour de l'axe x du téléphone (vertical dans cette prise en main) est gardée, celles
@@ -36,12 +39,15 @@
     const sansDefaut = gestes.filter((g) => !parDefautIds.has(g.id));
     const A_APPRENDRE = sansDefaut.length ? sansDefaut : gestes;
     const aApprendre = new Set(A_APPRENDRE.map((g) => g.id));
-    // exemples du jeu : ceux appris pour les gestes à apprendre remplacent les exemples par défaut de ces gestes ;
-    // un ancien apprentissage des 4 gestes ne garde que ses gestes à apprendre
-    const tousLesExemples = (appris) => {
-      const gardes = (appris || []).filter((e) => aApprendre.has(e.geste)), remplaces = new Set(gardes.map((e) => e.geste));
-      return [...parDefaut.filter((e) => !remplaces.has(e.geste)), ...gardes];
+    // exemples du jeu : les exemples par défaut PLUS tous les coups appris (SOLO : « Réapprendre » ajoute, il ne remplace plus)
+    const tousLesExemples = (appris) => [...parDefaut, ...(appris || []).filter((e) => aApprendre.has(e.geste))];
+    // cumul des apprentissages : anciens puis nouveaux, en gardant les MAX_APPRIS plus récents de chaque geste
+    const cumuler = (anciens, nouveaux) => {
+      const tous = [...(anciens || []).filter((e) => aApprendre.has(e.geste)), ...nouveaux], garde = [];
+      for (const g of gestes) garde.push(...tous.filter((e) => e.geste === g.id).slice(-MAX_APPRIS));
+      return garde;
     };
+    let nbExemples = 0;
     const historique = Gestes.creerHistorique(800);
     let declencheur = Gestes.creerDeclencheur({ seuil }), seuilActuel = seuil;
     let apprentissage = null, modele = null, attente = 30, timerFlash;
@@ -62,8 +68,9 @@
       if (e.type === 'fin') {
         biper('coup'); biper('fin');
         apprentissage = null;
-        const { precisions, attente: choix } = Apprentissage.choisirAttente(tousLesExemples(e.exemples));   // avec haut/bas par défaut
-        ecrire({ exemples: e.exemples, attente: choix });
+        const cumul = cumuler(lire().exemples, e.exemples);
+        const { precisions, attente: choix } = Apprentissage.choisirAttente(tousLesExemples(cumul));   // avec les exemples par défaut
+        ecrire({ exemples: cumul, attente: choix });
         charger();
         flash(texte('Appris !', `${precisions[Apprentissage.ATTENTES.indexOf(choix)]} % de gestes reconnus · à toi de jouer`), '');
       }
@@ -76,6 +83,7 @@
     }
     function charger() {
       const m = lire(), exemples = tousLesExemples(m.exemples);
+      nbExemples = exemples.length;
       if (!gestes.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
       const { attente: choix } = Apprentissage.choisirAttente(exemples);   // attente : réglée d'office, plus de choix à l'écran
       attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : Apprentissage.ATTENTES.includes(attenteDefaut) ? attenteDefaut : choix;
@@ -170,7 +178,7 @@
     function changerSeuil(s) { seuilActuel = s; declencheur = Gestes.creerDeclencheur({ seuil: s }); }
     // au démarrage : jeu si des gestes sont déjà appris, sinon apprentissage
     function commencer() { if (charger()) flash(texte('Joue !', `les ${gestes.length} gestes sont prêts`), ''); else apprendre(); }
-    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, changerMain, get gaucher() { return gaucher; }, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, get attente() { return attente; }, A_APPRENDRE,
+    return { surMouvement, apprendre, charger, commencer, changerSeuil, changerMoment, changerMain, get gaucher() { return gaucher; }, get moment() { return moment; }, get enApprentissage() { return !!apprentissage; }, get attente() { return attente; }, get nbExemples() { return nbExemples; }, A_APPRENDRE,
       exemplesEnCours: () => (apprentissage ? apprentissage.exemples : []) };
   }
 

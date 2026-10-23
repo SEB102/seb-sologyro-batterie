@@ -269,7 +269,7 @@ function jeuAppris(parDefaut = []) {
 test('gestes : bas → grosse caisse, haut → cymbale, gauche → caisse claire ; plus de « droite »', () => {
   const s = jeuSimule();
   assert.strictEqual(s.JeuGestes.GESTES.map((g) => g.id + ':' + g.son).join(' '), 'bas:Grosse caisse haut:Cymbale gauche:Caisse claire');
-  assert.strictEqual(s.JeuGestes.CLE, 'gyro-gestes-6');
+  assert.strictEqual(s.JeuGestes.CLE, 'gyro-solo-gestes-7');   // mémoire propre à SOLO (elle cumule les apprentissages)
 });
 
 test('apprentissage : 10 petits bips par geste (le 10e suivi des 2 bips de fin de geste)', () => {
@@ -279,7 +279,7 @@ test('apprentissage : 10 petits bips par geste (le 10e suivi des 2 bips de fin d
   const n = (b) => s.bips.filter((x) => x === b).length;
   assert.deepStrictEqual([n('debut'), n('coup'), n('gesteFini'), n('fin')], [3, 30, 2, 1], s.bips.join(' '));
   assert.ok(s.bips.indexOf('gesteFini') > 0 && s.bips[s.bips.indexOf('gesteFini') - 1] === 'coup', 'le 10e coup doit biper avant les 2 bips');
-  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-6'));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
   assert.strictEqual(TROIS.map((g) => stocke.exemples.filter((e) => e.geste === g).length).join(' '), '10 10 10');
 });
 
@@ -326,10 +326,10 @@ test('exemples par défaut partiels (bas et haut seulement) : l\'apprentissage n
   assert.ok(sons.length === 6 && attendu.filter((g, i) => sons[i] === g).length >= 5, sons.join(' '));
 });
 
-test('exemples par défaut (vrais coups iPhone, SOLO 22/10 19 h 46) : 10 de chaque, 100 % distingués, attente par défaut 0 ms', () => {
+test('exemples par défaut (vrais coups iPhone, SOLO 22/10 19 h 46 + 23/10 5 h 53) : 20 de chaque, 100 % distingués, attente par défaut 0 ms', () => {
   const D = require('./gestes-defaut.js');
-  assert.strictEqual(TROIS.map((g) => D.filter((e) => e.geste === g).length).join(' '), '10 10 10');
-  assert.strictEqual(D.length, 30);
+  assert.strictEqual(TROIS.map((g) => D.filter((e) => e.geste === g).length).join(' '), '20 20 20');
+  assert.strictEqual(D.length, 60);
   assert.strictEqual(G.evaluer(D, 0).precision, 1);
   const c = {}; require('vm').runInNewContext(require('fs').readFileSync(__dirname + '/gestes-defaut.js', 'utf8').replace('(this)', '(globalThis)'), c);
   assert.strictEqual(c.ATTENTE_DEFAUT, 0);
@@ -341,17 +341,18 @@ test('à l\'ouverture : exemples et attente par défaut appliqués d\'office, m�
   const s = jeuSimule(D, { attenteDefaut: 0, memoire: { 'gyro-gestes-5': JSON.stringify({ exemples: ancien, attente: 60 }) } });
   assert.strictEqual(s.jeu.charger(), true);
   assert.strictEqual(s.jeu.attente, 0);
-  assert.strictEqual(s.stockage.getItem('gyro-gestes-6'), null);   // rien d'écrit tant qu'on ne réapprend pas
+  assert.strictEqual(s.stockage.getItem('gyro-solo-gestes-7'), null);   // rien d'écrit tant qu'on ne réapprend pas
 });
 
-test('« Réapprendre » : 3 gestes × 10 coups remplacent les exemples par défaut, enregistrés dans gyro-gestes-6', () => {
+test('« Réapprendre » : 3 gestes × 10 coups S\'AJOUTENT aux exemples par défaut, enregistrés dans gyro-solo-gestes-7', () => {
   const defaut = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
   const s0 = jeuSimule(defaut); assert.strictEqual(s0.jeu.charger(), true);
   assert.strictEqual(s0.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'bas haut gauche');
   const { s, sons } = jeuAppris(defaut);
   assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 30, s.bips.join(' '));
-  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-6'));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
   assert.strictEqual(stocke.exemples.length, 30);
+  assert.strictEqual(s.jeu.nbExemples, 60, 'défaut + appris');
   sons.length = 0; const attendu = ['bas', 'haut', 'gauche', 'bas', 'haut', 'gauche'];
   s.jouer(seance(attendu).ech); s.avancer(s.horloge + 1000);
   assert.ok(sons.length === 6 && attendu.filter((g, i) => sons[i] === g).length >= 5, sons.join(' '));
@@ -467,16 +468,16 @@ test('gaucher, vrais coups iPhone passés en miroir : en mode gaucher chacun son
   for (const modeGaucher of [true, false]) {
     const s = jeuSimule(D, { attenteDefaut: 0, seuil: 178 }), sons = [];
     s.sonner = (g) => sons.push(g.id); s.jeu.charger(); s.jeu.changerMain(modeGaucher);
-    const joues = [];
+    const joues = [], premiers = [];
     for (const e of D) {
-      s.jouer(immobile().slice(0, 40));
+      s.jouer(immobile().slice(0, 40)); const n = sons.length;
       s.jouer(e.mesures.map((m) => enMiroir({ ...m, t: m.t + 100 })));   // ce que produit un gaucher : l'image en miroir du coup
-      s.jouer(immobile().slice(0, 40)); joues.push(e.geste);
+      s.jouer(immobile().slice(0, 40)); joues.push(e.geste); premiers.push(sons[n]);   // premier son du coup (isolé de son contexte, un coup peut en donner un 2e)
     }
-    if (modeGaucher) assert.deepStrictEqual(sons, joues, sons.join(' '));
+    if (modeGaucher) assert.deepStrictEqual(premiers, joues, premiers.join(' '));
     // sans le mode gaucher, le téléphone tenu en miroir (l'autre grand côté en bas) échange haut et bas ; le coup latéral, lui, reste
     // reconnu (le lacet vers la droite, téléphone retourné, tourne dans le même sens autour de son axe x que le lacet droitier)
-    else assert.deepStrictEqual(sons, joues.map((g) => ({ bas: 'haut', haut: 'bas', gauche: 'gauche' })[g]), 'droitier : ' + sons.join(' '));
+    else assert.deepStrictEqual(premiers, joues.map((g) => ({ bas: 'haut', haut: 'bas', gauche: 'gauche' })[g]), 'droitier : ' + premiers.join(' '));
   }
 });
 
@@ -503,8 +504,9 @@ test('gaucher : l\'écran d\'apprentissage annonce le coup latéral vers la droi
 });
 
 // ---- Vrai jeu iPhone (23/10/2026, 5 h 35 : bas → gauche → bas et bas → haut joués vite), rejoué dans le vrai code ----
-function rejouerJeuReel() {
-  const j = require('./jeu-iphone-0535.json'), D = require('./gestes-defaut.js');
+// exemples : ceux du jeu enregistré (les 30 de 19 h 46, les premiers de gestes-defaut.js) ou d'autres
+function rejouerJeuReel(exemples = require('./gestes-defaut.js').slice(0, 30)) {
+  const j = require('./jeu-iphone-0535.json'), D = exemples;
   const s = jeuSimule(D, { attenteDefaut: 0, seuil: j.seuil }), sons = [];
   s.sonner = (g) => sons.push([s.horloge, g.id]); s.jeu.charger();
   for (const [t, r, a] of j.mesures) { s.avancer(t); s.jeu.surMouvement({ rotationRate: { alpha: r[0], beta: r[1], gamma: r[2] }, acceleration: { x: a[0], y: a[1], z: a[2] } }, t); }
@@ -529,11 +531,66 @@ test('vrai jeu iPhone : chaque coup vers le BAS ou le HAUT sonne, même 0,3 s ap
   assert.strictEqual(muets.length, 0, muets.length + ' coup(s) muet(s) : ' + muets.map((c) => Math.round(c.t) + ' ' + c.geste).join(', '));
 });
 
-test('vrai jeu iPhone : rien d\'autre ne change (mêmes sons pour tous les coups qui sonnaient déjà)', () => {
+test('vrai jeu iPhone, avec les exemples de l\'époque (19 h 46) : rien d\'autre ne change (mêmes sons pour tous les coups qui sonnaient déjà)', () => {
   const { j, sons } = rejouerJeuReel();
   const avant = j.sonsJoues.map(([t, g]) => [Math.round(t), g]);
   const perdus = avant.filter(([t, g]) => !sons.some(([u, h]) => Math.abs(u - t) <= 5 && h === g));
   assert.strictEqual(perdus.length, 0, 'sons changés ou perdus : ' + perdus.map((x) => x.join(' ')).join(', '));
+});
+
+test('vrai jeu iPhone, avec les exemples réunis (19 h 46 + 5 h 53) : coups latéraux mieux reconnus, bas et haut toujours justes', () => {
+  const avant = rejouerJeuReel(), apres = rejouerJeuReel(require('./gestes-defaut.js'));
+  const justes = ({ sons, coups }, g) => coups.filter((c) => c.geste === g && sons.some(([t, h]) => t >= c.t - 5 && t <= c.t + 30 && h === g)).length;
+  const l = (r) => ['bas', 'haut', 'gauche'].map((g) => justes(r, g)).join(' ');
+  assert.strictEqual(l(avant), '39 12 19', 'avant : ' + l(avant));
+  assert.ok(justes(apres, 'bas') === 39 && justes(apres, 'haut') === 12 && justes(apres, 'gauche') >= 24, 'après : ' + l(apres));
+});
+
+// ---- Réapprendre ajoute (droitier comme gauchère/gaucher), jusqu'à 50 coups appris par geste ; mémoire propre à SOLO ----
+test('« Réapprendre » deux fois : les apprentissages se cumulent (défaut + 1er + 2e), en droitier puis en gauchère/gaucher (gestes en miroir)', () => {
+  const defaut = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
+  const s = jeuSimule(defaut), sons = []; s.sonner = (g) => sons.push(g.id); s.jeu.charger();
+  assert.strictEqual(s.jeu.nbExemples, 30);
+  const apprendreUneFois = (miroir) => { s.jeu.apprendre(); s.avancer(s.horloge + 1700);
+    for (const g of TROIS) { const ech = seance(Array(13).fill(g), { retour: 1 }).ech; s.jouer(miroir ? ech.map(enMiroir) : ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+    s.jouer(immobile()); };
+  apprendreUneFois(false);
+  assert.strictEqual(s.jeu.nbExemples, 60, '1er apprentissage');
+  s.jeu.changerMain(true); apprendreUneFois(true);
+  assert.strictEqual(s.jeu.nbExemples, 90, '2e apprentissage, en gauchère/gaucher');
+  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
+  assert.strictEqual(TROIS.map((g) => stocke.exemples.filter((e) => e.geste === g).length).join(' '), '20 20 20');
+  // les coups appris en gauchère/gaucher sont enregistrés comme ceux d'un droitier : ils tournent dans le même sens que les autres
+  const sens = (e) => A.sensDuCoup(e.mesures, e.t), dot = (a, b) => a.reduce((p, x, i) => p + x * b[i], 0);
+  for (const g of TROIS) { const l = stocke.exemples.filter((e) => e.geste === g); assert.ok(l.slice(10).every((e) => dot(sens(e), sens(l[0])) > 0), g + ' : coup gaucher enregistré en miroir'); }
+  for (const [main, miroir] of [[true, true], [false, false]]) {
+    s.jeu.changerMain(main); s.jouer(immobile()); sons.length = 0;
+    const attendu = ['bas', 'haut', 'gauche', 'bas', 'gauche', 'haut'];
+    s.jouer(miroir ? seance(attendu).ech.map(enMiroir) : seance(attendu).ech); s.avancer(s.horloge + 1000);
+    assert.ok(sons.length === 6 && attendu.filter((g, i) => sons[i] === g).length >= 5, (main ? 'gaucher : ' : 'droitier : ') + sons.join(' '));
+  }
+});
+
+test('« Réapprendre » : au-delà de 50 coups appris par geste, les plus anciens partent (les exemples par défaut restent)', () => {
+  const defaut = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
+  const ancien = exemplesDe(Array.from({ length: 135 }, (_, k) => TROIS[k % 3])).map((e, i) => ({ ...e, ancien: i }));
+  const parGeste = TROIS.map((g) => ancien.filter((e) => e.geste === g).length);
+  const s = jeuSimule(defaut, { memoire: { 'gyro-solo-gestes-7': JSON.stringify({ exemples: ancien, attente: 0 }) } });
+  s.jeu.charger(); s.jeu.apprendre(); s.avancer(1700);
+  for (const g of TROIS) { s.jouer(seance(Array(13).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
+  assert.strictEqual(TROIS.map((g) => stocke.exemples.filter((e) => e.geste === g).length).join(' '), '50 50 50', 'plafond : ' + parGeste.join(' '));
+  for (const g of TROIS) { const l = stocke.exemples.filter((e) => e.geste === g); assert.strictEqual(l.filter((e) => e.ancien === undefined).length, 10, g + ' : les 10 nouveaux sont gardés'); }
+  assert.strictEqual(s.jeu.nbExemples, 30 + 150);
+});
+
+test('mémoire de SOLO : l\'apprentissage enregistré par les autres apps (gyro-gestes-6) n\'est pas repris (celui de ce matin est déjà dans les exemples par défaut)', () => {
+  const D = require('./gestes-defaut.js');
+  const autre = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
+  const s = jeuSimule(D, { attenteDefaut: 0, memoire: { 'gyro-gestes-6': JSON.stringify({ exemples: autre, attente: 60 }) } });
+  assert.strictEqual(s.jeu.charger(), true);
+  assert.strictEqual(s.jeu.nbExemples, 60);
+  assert.strictEqual(s.jeu.attente, 0);
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
