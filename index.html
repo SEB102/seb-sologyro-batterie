@@ -28,10 +28,10 @@
   .reglages { display: flex; flex-direction: column; gap: 10px; }
   .gestes { display: flex; flex-direction: column; gap: 10px; color: var(--doux); }
   .gestes div { background: #1c1c1c; border-radius: 12px; padding: 12px 14px; border-left: 8px solid var(--c); }
-  .gestes b { color: var(--texte); display: block; font-size: 22px; }
+  .gestes b { color: var(--texte); display: block; font-size: 26px; }
   #main { gap: 8px; }
   #main button { font-size: 18px; padding: 12px 6px; }
-  .gestes select { width: 100%; margin-top: 8px; font-size: 22px; padding: 12px; border: 0; border-radius: 8px; background: #333; color: var(--texte); }
+  .gestes select { width: 100%; margin-top: 8px; font-size: 24px; padding: 12px; border: 0; border-radius: 8px; background: #333; color: var(--texte); }
   .choix { display: flex; gap: 6px; flex-wrap: wrap; }
   .choix button { flex: 1; font-size: 14px; padding: 10px 6px; background: #2a2a2a; color: var(--texte); line-height: 1.3; }
   .choix button.actif { background: #2a6; color: #fff; }
@@ -55,9 +55,9 @@
 <div id="etat">Les 3 gestes sont prêts dès le départ ; le téléphone joue lui-même le son de chacun, à choisir ci-dessous.</div>
 <div class="choix" id="main"><button data-main="droitier">Droitière / Droitier</button><button data-main="gaucher">Gauchère / Gaucher</button></div>
 <div class="gestes">
-  <div style="--c:#e8643c"><b>↓ coup vers le bas</b><select class="son" data-g="bas" aria-label="Son du coup vers le bas"></select></div>
-  <div style="--c:#e8c43c"><b>↑ coup vers le haut</b><select class="son" data-g="haut" aria-label="Son du coup vers le haut"></select></div>
-  <div style="--c:#4c9be8"><b id="nom-lateral">← coup vers la gauche</b><select class="son" data-g="gauche" aria-label="Son du coup vers la gauche"></select></div>
+  <div style="--c:#e8643c"><b>↓ Coup vers le BAS</b><select class="son" data-g="bas" aria-label="Son du coup vers le bas"></select></div>
+  <div style="--c:#e8c43c"><b>↑ Coup vers le HAUT</b><select class="son" data-g="haut" aria-label="Son du coup vers le haut"></select></div>
+  <div style="--c:#4c9be8"><b id="nom-lateral">← Coup vers la GAUCHE</b><select class="son" data-g="gauche" aria-label="Son du coup vers la gauche"></select></div>
 </div>
 <button id="demarrer">Toucher pour démarrer</button>
 <div id="flash">—</div>
@@ -79,19 +79,19 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-23x</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-23y</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261023x"></script>
-<script src="sons.js?v=20261023x"></script>
-<script src="gestes.js?v=20261023x"></script>
-<script src="apprentissage.js?v=20261023x"></script>
-<script src="gestes-defaut.js?v=20261023x"></script>
-<script src="jeu-gestes.js?v=20261023x"></script>
+<script src="detecteur.js?v=20261023y"></script>
+<script src="sons.js?v=20261023y"></script>
+<script src="gestes.js?v=20261023y"></script>
+<script src="apprentissage.js?v=20261023y"></script>
+<script src="gestes-defaut.js?v=20261023y"></script>
+<script src="jeu-gestes.js?v=20261023y"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -149,7 +149,7 @@ function appliquerMain(m) {
   try { localStorage.setItem('gyro-main', main); } catch {}
   jeu.changerMain(main === 'gaucher');
   document.querySelectorAll('#main button').forEach((b) => b.classList.toggle('actif', b.dataset.main === main));
-  $('nom-lateral').textContent = main === 'gaucher' ? '→ coup vers la droite' : '← coup vers la gauche';
+  $('nom-lateral').textContent = main === 'gaucher' ? '→ Coup vers la DROITE' : '← Coup vers la GAUCHE';
 }
 document.querySelectorAll('#main button').forEach((b) => (b.onclick = () => appliquerMain(b.dataset.main)));
 appliquerMain(main);
