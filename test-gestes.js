@@ -269,7 +269,7 @@ function jeuAppris(parDefaut = []) {
 test('gestes : bas → grosse caisse, haut → cymbale, gauche → caisse claire ; plus de « droite »', () => {
   const s = jeuSimule();
   assert.strictEqual(s.JeuGestes.GESTES.map((g) => g.id + ':' + g.son).join(' '), 'bas:Grosse caisse haut:Cymbale gauche:Caisse claire');
-  assert.strictEqual(s.JeuGestes.CLE, 'gyro-solo-gestes-7');   // mémoire propre à SOLO (elle cumule les apprentissages)
+  assert.strictEqual(s.JeuGestes.CLE, 'gyro-gestes-7');   // mémoire commune aux trois apps, qui cumule les apprentissages
 });
 
 test('apprentissage : 10 petits bips par geste (le 10e suivi des 2 bips de fin de geste)', () => {
@@ -279,7 +279,7 @@ test('apprentissage : 10 petits bips par geste (le 10e suivi des 2 bips de fin d
   const n = (b) => s.bips.filter((x) => x === b).length;
   assert.deepStrictEqual([n('debut'), n('coup'), n('gesteFini'), n('fin')], [3, 30, 2, 1], s.bips.join(' '));
   assert.ok(s.bips.indexOf('gesteFini') > 0 && s.bips[s.bips.indexOf('gesteFini') - 1] === 'coup', 'le 10e coup doit biper avant les 2 bips');
-  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-7'));
   assert.strictEqual(TROIS.map((g) => stocke.exemples.filter((e) => e.geste === g).length).join(' '), '10 10 10');
 });
 
@@ -341,16 +341,16 @@ test('à l\'ouverture : exemples et attente par défaut appliqués d\'office, m�
   const s = jeuSimule(D, { attenteDefaut: 0, memoire: { 'gyro-gestes-5': JSON.stringify({ exemples: ancien, attente: 60 }) } });
   assert.strictEqual(s.jeu.charger(), true);
   assert.strictEqual(s.jeu.attente, 0);
-  assert.strictEqual(s.stockage.getItem('gyro-solo-gestes-7'), null);   // rien d'écrit tant qu'on ne réapprend pas
+  assert.strictEqual(s.stockage.getItem('gyro-gestes-7'), null);   // rien d'écrit tant qu'on ne réapprend pas
 });
 
-test('« Réapprendre » : 3 gestes × 10 coups S\'AJOUTENT aux exemples par défaut, enregistrés dans gyro-solo-gestes-7', () => {
+test('« Réapprendre » : 3 gestes × 10 coups S\'AJOUTENT aux exemples par défaut, enregistrés dans gyro-gestes-7', () => {
   const defaut = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
   const s0 = jeuSimule(defaut); assert.strictEqual(s0.jeu.charger(), true);
   assert.strictEqual(s0.jeu.A_APPRENDRE.map((g) => g.id).join(' '), 'bas haut gauche');
   const { s, sons } = jeuAppris(defaut);
   assert.strictEqual(s.bips.filter((b) => b === 'coup').length, 30, s.bips.join(' '));
-  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-7'));
   assert.strictEqual(stocke.exemples.length, 30);
   assert.strictEqual(s.jeu.nbExemples, 60, 'défaut + appris');
   sons.length = 0; const attendu = ['bas', 'haut', 'gauche', 'bas', 'haut', 'gauche'];
@@ -558,7 +558,7 @@ test('« Réapprendre » deux fois : les apprentissages se cumulent (défaut + 1
   assert.strictEqual(s.jeu.nbExemples, 60, '1er apprentissage');
   s.jeu.changerMain(true); apprendreUneFois(true);
   assert.strictEqual(s.jeu.nbExemples, 90, '2e apprentissage, en gauchère/gaucher');
-  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-7'));
   assert.strictEqual(TROIS.map((g) => stocke.exemples.filter((e) => e.geste === g).length).join(' '), '20 20 20');
   // les coups appris en gauchère/gaucher sont enregistrés comme ceux d'un droitier : ils tournent dans le même sens que les autres
   const sens = (e) => A.sensDuCoup(e.mesures, e.t), dot = (a, b) => a.reduce((p, x, i) => p + x * b[i], 0);
@@ -575,22 +575,33 @@ test('« Réapprendre » : au-delà de 50 coups appris par geste, les plus ancie
   const defaut = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
   const ancien = exemplesDe(Array.from({ length: 135 }, (_, k) => TROIS[k % 3])).map((e, i) => ({ ...e, ancien: i }));
   const parGeste = TROIS.map((g) => ancien.filter((e) => e.geste === g).length);
-  const s = jeuSimule(defaut, { memoire: { 'gyro-solo-gestes-7': JSON.stringify({ exemples: ancien, attente: 0 }) } });
+  const s = jeuSimule(defaut, { memoire: { 'gyro-gestes-7': JSON.stringify({ exemples: ancien, attente: 0 }) } });
   s.jeu.charger(); s.jeu.apprendre(); s.avancer(1700);
   for (const g of TROIS) { s.jouer(seance(Array(13).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
-  const stocke = JSON.parse(s.stockage.getItem('gyro-solo-gestes-7'));
+  const stocke = JSON.parse(s.stockage.getItem('gyro-gestes-7'));
   assert.strictEqual(TROIS.map((g) => stocke.exemples.filter((e) => e.geste === g).length).join(' '), '50 50 50', 'plafond : ' + parGeste.join(' '));
   for (const g of TROIS) { const l = stocke.exemples.filter((e) => e.geste === g); assert.strictEqual(l.filter((e) => e.ancien === undefined).length, 10, g + ' : les 10 nouveaux sont gardés'); }
   assert.strictEqual(s.jeu.nbExemples, 30 + 150);
 });
 
-test('mémoire de SOLO : l\'apprentissage enregistré par les autres apps (gyro-gestes-6) n\'est pas repris (celui de ce matin est déjà dans les exemples par défaut)', () => {
+test('mémoire gyro-gestes-7 : l\'ancienne mémoire gyro-gestes-6 n\'est pas reprise (l\'apprentissage du 23/10 au matin est déjà dans les exemples par défaut)', () => {
   const D = require('./gestes-defaut.js');
   const autre = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
   const s = jeuSimule(D, { attenteDefaut: 0, memoire: { 'gyro-gestes-6': JSON.stringify({ exemples: autre, attente: 60 }) } });
   assert.strictEqual(s.jeu.charger(), true);
   assert.strictEqual(s.jeu.nbExemples, 60);
   assert.strictEqual(s.jeu.attente, 0);
+});
+
+test('mémoire gyro-gestes-7 : reprend l\'apprentissage déjà fait dans SOLO version ab (gyro-solo-gestes-7) ; le suivant s\'y ajoute et s\'enregistre dans gyro-gestes-7', () => {
+  const defaut = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
+  const solo = exemplesDe(Array.from({ length: 30 }, (_, k) => TROIS[k % 3]));
+  const s = jeuSimule(defaut, { memoire: { 'gyro-solo-gestes-7': JSON.stringify({ exemples: solo, attente: 0 }) } });
+  assert.strictEqual(s.jeu.charger(), true); assert.strictEqual(s.jeu.nbExemples, 60);
+  s.jeu.apprendre(); s.avancer(1700);
+  for (const g of TROIS) { s.jouer(seance(Array(13).fill(g), { retour: 1 }).ech, s.finDeGeste()); s.avancer(s.horloge + 1800); }
+  assert.strictEqual(JSON.parse(s.stockage.getItem('gyro-gestes-7')).exemples.length, 60);
+  assert.strictEqual(s.jeu.nbExemples, 90);
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);

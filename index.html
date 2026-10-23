@@ -41,6 +41,7 @@
   #ecranNoir { position: fixed; inset: 0; z-index: 50; background: #000; touch-action: none; display: flex; align-items: flex-end;
                justify-content: center; padding-bottom: 48px; -webkit-touch-callout: none; }
   #ecranNoir[hidden] { display: none; }
+  .reserve[hidden] { display: none; }
   #indiceNoir { color: #1c1c1c; font-size: 13px; transition: color .2s; }
   /* Son coupé par l'iPhone (dialogue système, appel, autre app…) : bandeau bien visible, même sur l'écran noir */
   #sonCoupe { position: fixed; left: 12px; right: 12px; top: 12px; z-index: 60; background: #b3261e; color: #fff; border-radius: 12px;
@@ -71,8 +72,8 @@
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="apprendre" class="secondaire">Apprendre encore mes 3 gestes (10 coups de chacun, ajoutés aux autres)</button>
-  <button id="enregistrement" class="secondaire">Envoyer l'enregistrement (provisoire : la dernière minute et demie de jeu)</button>
+  <button id="apprendre" class="secondaire reserve" hidden>Apprentissage</button>
+  <button id="enregistrement" class="secondaire reserve" hidden>Envoyer l'enregistrement</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
 </div>
@@ -80,19 +81,19 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-23ab</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-23ac</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
 window.onerror = (msg, src, ligne) => montrerErreur(`${msg} (${(src || '').split('/').pop()}:${ligne})`);
 window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message || e.reason);
 </script>
-<script src="detecteur.js?v=20261023ab"></script>
-<script src="sons.js?v=20261023ab"></script>
-<script src="gestes.js?v=20261023ab"></script>
-<script src="apprentissage.js?v=20261023ab"></script>
-<script src="gestes-defaut.js?v=20261023ab"></script>
-<script src="jeu-gestes.js?v=20261023ab"></script>
+<script src="detecteur.js?v=20261023ac"></script>
+<script src="sons.js?v=20261023ac"></script>
+<script src="gestes.js?v=20261023ac"></script>
+<script src="apprentissage.js?v=20261023ac"></script>
+<script src="gestes-defaut.js?v=20261023ac"></script>
+<script src="jeu-gestes.js?v=20261023ac"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -165,7 +166,7 @@ function appliquerSeuil(seuil) {
 appliquerSeuil(reglages.seuil);
 $('seuil').oninput = (e) => appliquerSeuil(Detecteur.sensibiliteVersSeuil(Number(e.target.value)));
 
-// ---- Enregistrement provisoire (23/10/2026, pour comprendre un enchaînement) : mesures brutes du capteur telles que reçues
+// ---- Enregistrement (23/10/2026, pour comprendre un enchaînement ; bouton de réserve) : mesures brutes du capteur telles que reçues
 // (avant tout miroir gauchère/gaucher) et sons joués, sur la dernière minute et demie ; tout le reste se recalcule en rejouant
 // les mesures dans le vrai code ----
 const enreg = { duree: 90000, mesures: [], sons: [] };
@@ -186,6 +187,10 @@ $('enregistrement').onclick = () => {
   if (navigator.canShare && navigator.canShare({ files: [fichier] })) return navigator.share({ files: [fichier], title: nom }).catch(() => {});
   const a = document.createElement('a'); a.href = URL.createObjectURL(fichier); a.download = nom; a.click();
 };
+
+// ---- Boutons de réserve (Apprentissage, Envoyer l'enregistrement) : masqués mais fonctionnels ; ajouter ?reglages à l'adresse
+// de la page pour les afficher ----
+if (/[?&#]reglages\b/.test(location.search + location.hash)) document.querySelectorAll('.reserve').forEach((b) => (b.hidden = false));
 
 // ---- Capteur ----
 let maxAxes = [1, 1, 1], recu = false, evenements = 0;

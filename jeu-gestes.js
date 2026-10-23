@@ -1,4 +1,4 @@
-// Partie commune aux pages du téléphone (SOLO a en plus, depuis le 23/10, le retour latéral comparé à la direction apprise) : exemples par défaut des gestes (gestes-defaut.js),
+// Partie commune aux pages du téléphone (identique dans les trois apps) : exemples par défaut des gestes (gestes-defaut.js),
 // apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage des 3), choix de l'attente, moment du son, jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
 //   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
@@ -13,10 +13,10 @@
   // Mêmes gestes pour les trois apps (même adresse seb102.github.io) : appris une fois, valables partout
   // gyro-gestes-6 : mémoire des 3 gestes (22/10/2026 au soir) ; les apprentissages d'avant (gyro-gestes-5 et plus anciens, à
   // 4 gestes) sont ignorés : les exemples et l'attente par défaut s'appliquent dès l'ouverture
-  // SOLO (23/10/2026) : mémoire propre, gyro-solo-gestes-7, qui CUMULE les apprentissages (au plus MAX_APPRIS coups par geste,
-  // les plus récents) ; l'apprentissage de SOLO du 23/10 au matin est déjà dans ses exemples par défaut, celui des autres apps
-  // (gyro-gestes-6) n'est pas repris
-  const CLE = 'gyro-solo-gestes-7', MAX_APPRIS = 50;
+  // gyro-gestes-7 (23/10/2026) : mémoire qui CUMULE les apprentissages (au plus MAX_APPRIS coups par geste, les plus récents),
+  // commune aux trois apps ; elle reprend celle de SOLO (gyro-solo-gestes-7, version 2026-10-23ab) si elle est vide. L'ancienne
+  // mémoire gyro-gestes-6 n'est pas reprise : l'apprentissage de SOLO du 23/10 au matin est déjà dans les exemples par défaut.
+  const CLE = 'gyro-gestes-7', CLE_SOLO = 'gyro-solo-gestes-7', MAX_APPRIS = 50;
   // Gaucher : téléphone dans la main gauche, tenu en miroir de la main droite (écran vers la paume, haut du téléphone du même
   // côté ; c'est donc l'autre grand côté qui est en bas). Ses mouvements sont l'image dans un miroir de ceux d'un droitier :
   // ramenés en droitier, la rotation autour de l'axe x du téléphone (vertical dans cette prise en main) est gardée, celles
@@ -24,7 +24,7 @@
   // P = symétrie de l'axe x). Les exemples (par défaut ou appris) restent en droitier ; le coup « gauche » se fait vers la droite.
   const miroir = (r, a) => [{ alpha: r.alpha, beta: typeof r.beta === 'number' ? -r.beta : r.beta, gamma: typeof r.gamma === 'number' ? -r.gamma : r.gamma },
     a && { x: typeof a.x === 'number' ? -a.x : a.x, y: a.y, z: a.z }];
-  const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || '{}'); } catch { return {}; } };
+  const lire = () => { try { return JSON.parse(localStorage.getItem(CLE) || localStorage.getItem(CLE_SOLO) || '{}'); } catch { return {}; } };
   const ecrire = (o) => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch {} };
 
   // nomDuSon(geste, i) : nom affiché (version multi : le son choisi sur l'ordinateur pour ce téléphone)
