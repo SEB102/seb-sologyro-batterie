@@ -1,4 +1,4 @@
-// Partie commune aux pages du téléphone (identique dans les trois apps) : exemples par défaut des gestes (gestes-defaut.js),
+// Partie commune aux pages du téléphone (SOLO a en plus, depuis le 23/10, le retour latéral comparé à la direction apprise) : exemples par défaut des gestes (gestes-defaut.js),
 // apprentissage guidé de ceux qui n'en ont pas (ou réapprentissage des 3), choix de l'attente, moment du son, jeu. La page dit seulement où sonne le son :
 //   sonner(geste, force) : joue le son du geste, sur le téléphone (SOLO) ou en l'envoyant à l'ordinateur
 //   biper(type)          : 'debut' (1 bip) | 'coup' (petit bip aigu : coup compté) | 'gesteFini' (2 bips) | 'fin' (3 bips montants), au même endroit
@@ -79,23 +79,31 @@
       if (!gestes.every((g) => exemples.some((e) => e.geste === g.id))) { modele = null; return false; }   // reste à apprendre
       const { attente: choix } = Apprentissage.choisirAttente(exemples);   // attente : réglée d'office, plus de choix à l'écran
       attente = Apprentissage.ATTENTES.includes(m.attente) ? m.attente : Apprentissage.ATTENTES.includes(attenteDefaut) ? attenteDefaut : choix;
+      const somme = exemples.filter((e) => e.geste === 'gauche').map((e) => Apprentissage.sensDuCoup(e.mesures, e.t))
+        .reduce((p, v) => { const n = Math.hypot(...v) || 1; return p.map((x, i) => x + v[i] / n); }, [0, 0, 0]), n = Math.hypot(...somme);
+      dirLaterale = n ? somme.map((x) => x / n) : null;
       modele = Gestes.entrainer(exemples.map((e) => ({ geste: e.geste, resume: Gestes.resumer(e.mesures, e.t, attente) })));
       return true;
     }
     // Retour muet pour gauche : le retour du poignet après un coup latéral est un mouvement en sens inverse,
     // presque aussi vif que le coup (iPhone, 22/10/2026 : 0,13 à 0,73 s après le coup) ; il jouerait « Oh ! ». Après un coup
     // vers la gauche, un mouvement en sens INVERSE dans les RETOUR_MUET ms ne sonne donc pas, quel que soit le son reconnu.
+    // « En sens inverse » = opposé à la direction APPRISE du geste (moyenne de ses exemples), à cos < −0,6 : le coup latéral joué
+    // vite est souvent mêlé au mouvement précédent, et le comparer à lui-même rendait muets des coups bas/haut presque
+    // perpendiculaires (SOLO, iPhone 23/10 : 7 coups sur 51, cos −0,22 à +0,32 avec la direction apprise ; les vrais retours sont
+    // à −0,98 en médiane, 171 sur 180 sous −0,6).
     // Haut et bas ne sont pas concernés (leurs retours sont nettement plus faibles et passent bien).
     const RETOUR_MUET = 600;
-    let dernierLateral = null;   // { t, sens } du dernier coup vers la gauche joué
+    let dernierLateral = null;   // { t } du dernier coup vers la gauche joué
+    let dirLaterale = null;      // direction apprise du coup vers la gauche (vecteur unité), calculée au chargement
     // delai : temps à attendre avant de reconnaître le geste (l'attente choisie ; 0 si ses mesures sont déjà là)
     function jouer(t, sens, delai = attente) {
-      const muet = dernierLateral && t - dernierLateral.t < RETOUR_MUET && sens.reduce((s, x, i) => s + x * dernierLateral.sens[i], 0) < 0;
+      const muet = dernierLateral && dirLaterale && t - dernierLateral.t < RETOUR_MUET && sens.reduce((s, x, i) => s + x * dirLaterale[i], 0) < -0.6 * Math.hypot(...sens);
       if (muet) return;
       setTimeout(() => {
         const id = modele.classer(Gestes.resumer(historique.mesures, t, attente));
         const i = gestes.findIndex((g) => g.id === id), g = gestes[i];
-        dernierLateral = id === 'gauche' ? { t, sens } : null;
+        dernierLateral = id === 'gauche' ? { t } : null;
         sonner(g, Apprentissage.force(historique.mesures, t, seuilActuel));
         $('flash').textContent = nomDuSon(g, i).toUpperCase();
         $('flash').style.background = g.couleur; $('flash').style.color = '#111';

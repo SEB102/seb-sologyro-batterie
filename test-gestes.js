@@ -502,4 +502,38 @@ test('gaucher : l\'écran d\'apprentissage annonce le coup latéral vers la droi
   assert.ok(/vers la DROITE/.test(s.elements.flash.innerHTML) && !/GAUCHE/.test(s.elements.flash.innerHTML), s.elements.flash.innerHTML);
 });
 
+// ---- Vrai jeu iPhone (23/10/2026, 5 h 35 : bas → gauche → bas et bas → haut joués vite), rejoué dans le vrai code ----
+function rejouerJeuReel() {
+  const j = require('./jeu-iphone-0535.json'), D = require('./gestes-defaut.js');
+  const s = jeuSimule(D, { attenteDefaut: 0, seuil: j.seuil }), sons = [];
+  s.sonner = (g) => sons.push([s.horloge, g.id]); s.jeu.charger();
+  for (const [t, r, a] of j.mesures) { s.avancer(t); s.jeu.surMouvement({ rotationRate: { alpha: r[0], beta: r[1], gamma: r[2] }, acceleration: { x: a[0], y: a[1], z: a[2] } }, t); }
+  s.avancer(s.horloge + 1000);
+  // coups nets du jeu : direction au déclenchement à cos > 0,7 d'un geste appris
+  const ref = (g) => { const v = D.filter((e) => e.geste === g).map((e) => A.sensDuCoup(e.mesures, e.t)).reduce((p, x) => { const n = Math.hypot(...x); return p.map((y, i) => y + x[i] / n); }, [0, 0, 0]); const n = Math.hypot(...v); return v.map((x) => x / n); };
+  const R = { bas: ref('bas'), haut: ref('haut'), gauche: ref('gauche') };
+  const m = j.mesures.filter((x) => x[1][0] !== null).map(([t, r, a]) => ({ t, rot: r, acc: a }));
+  const dec = G.creerDeclencheur({ seuil: j.seuil }), coups = [];
+  for (const x of m) if (dec.traiter(x.rot, x.t)) {
+    const fen = m.filter((y) => y.t >= x.t - 100 && y.t <= x.t + 200), v = A.sensDuCoup(fen, x.t), n = Math.hypot(...v);
+    for (const g in R) if (v.reduce((p, y, i) => p + y * R[g][i], 0) / n > 0.7) coups.push({ t: x.t, geste: g });
+  }
+  return { j, sons, coups };
+}
+
+test('vrai jeu iPhone : chaque coup vers le BAS ou le HAUT sonne, même 0,3 s après un coup latéral (il était pris pour un retour)', () => {
+  const { sons, coups } = rejouerJeuReel();
+  const sonne = (c) => sons.some(([t]) => t >= c.t - 5 && t <= c.t + 30);
+  const muets = coups.filter((c) => c.geste !== 'gauche' && !sonne(c));
+  assert.strictEqual(coups.filter((c) => c.geste === 'bas').length + ' ' + coups.filter((c) => c.geste === 'haut').length, '39 12');
+  assert.strictEqual(muets.length, 0, muets.length + ' coup(s) muet(s) : ' + muets.map((c) => Math.round(c.t) + ' ' + c.geste).join(', '));
+});
+
+test('vrai jeu iPhone : rien d\'autre ne change (mêmes sons pour tous les coups qui sonnaient déjà)', () => {
+  const { j, sons } = rejouerJeuReel();
+  const avant = j.sonsJoues.map(([t, g]) => [Math.round(t), g]);
+  const perdus = avant.filter(([t, g]) => !sons.some(([u, h]) => Math.abs(u - t) <= 5 && h === g));
+  assert.strictEqual(perdus.length, 0, 'sons changés ou perdus : ' + perdus.map((x) => x.join(' ')).join(', '));
+});
+
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
