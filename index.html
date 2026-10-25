@@ -81,7 +81,7 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-25a</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-25b</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
@@ -183,9 +183,12 @@ $('enregistrement').onclick = () => {
     main, sons: sonsChoisis, appris: (() => { try { return JSON.parse(localStorage.getItem(JeuGestes.CLE) || 'null'); } catch { return null; } })(),
     colonnes: { mesures: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²', 'accélération avec gravité [x, y, z] m/s²'], sons: ['t ms', 'geste', 'force'] },
     mesures: enreg.mesures, sonsJoues: enreg.sons };
-  const fichier = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
-  if (navigator.canShare && navigator.canShare({ files: [fichier] })) return navigator.share({ files: [fichier], title: nom }).catch(() => {});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(fichier); a.download = nom; a.click();
+  const texte = JSON.stringify(contenu), partageable = (f) => !!(navigator.canShare && navigator.canShare({ files: [f] }));
+  let fichier = new File([texte], nom, { type: 'application/json' });
+  if (!partageable(fichier)) fichier = new File([texte], nom, { type: 'text/plain' });   // Chrome Android refuse de partager du JSON
+  if (partageable(fichier)) return navigator.share({ files: [fichier], title: nom }).catch((e) => { if (e.name !== 'AbortError') message('Envoi impossible : ' + e.message); });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(fichier); a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove();
 };
 
 // ---- Boutons de réserve (Apprentissage, Envoyer l'enregistrement) : masqués mais fonctionnels ; ajouter ?reglages à l'adresse
