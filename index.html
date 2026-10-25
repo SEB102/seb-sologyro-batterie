@@ -72,7 +72,7 @@
   <span>3</span><div class="jauge"><i id="j2"></i></div>
 </div>
 <div class="reglages">
-  <button id="apprendre" class="secondaire reserve" hidden>Apprentissage</button>
+  <button id="apprendre" class="secondaire">Apprentissage</button>
   <button id="enregistrement" class="secondaire">Envoyer l'enregistrement</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
@@ -81,7 +81,7 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-25c</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-25d</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
@@ -94,6 +94,7 @@ window.onunhandledrejection = (e) => montrerErreur(e.reason && e.reason.message 
 <script src="apprentissage.js?v=20261023ad"></script>
 <script src="gestes-defaut.js?v=20261023ad"></script>
 <script src="jeu-gestes.js?v=20261023ad"></script>
+<script src="android.js?v=20261025d"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const memo = (() => { try { return JSON.parse(localStorage.getItem('gyro-batterie') || '{}'); } catch { return {}; } })();
@@ -207,8 +208,8 @@ if (/[?&#]reglages\b/.test(location.search + location.hash)) document.querySelec
 let maxAxes = [1, 1, 1], recu = false, evenements = 0;
 function surMouvement(e) {
   evenements++;
-  const t = performance.now(); noterMesure(e, t);
-  if (jeu.surMouvement(e, t) === null) return;   // pas de gyroscope : les gestes ne peuvent pas être reconnus
+  const t = performance.now(); noterMesure(e, t);   // enregistrement : mesures brutes, avant la correction Android
+  if (jeu.surMouvement(Android.versIphone(e, navigator.userAgent, navigator.platform, navigator.maxTouchPoints), t) === null) return;   // pas de gyroscope : les gestes ne peuvent pas être reconnus
   recu = true;
   const r = e.rotationRate;
   [r.alpha || 0, r.beta || 0, r.gamma || 0].forEach((v, i) => {   // jauges : chaque axe de rotation relativement à son maximum

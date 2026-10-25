@@ -493,4 +493,43 @@ test('sons : grosse caisse et cymbale se jouent sans erreur', () => {
   for (const f of [s.grosseCaisse, s.cymbale]) { f(0); f(1); }
 });
 
+// ---- Android (25/10/2026) : accélération de signe opposé à l'iPhone sur les 3 axes, rotation identique (android.js) ----
+// Vérité de référence : le sens de rotation du coup (même convention sur les deux), à cos > 0,7 de la direction apprise du geste.
+function rejouerAndroid(convertir) {
+  const G = require('./gestes.js'), A = require('./apprentissage.js'), D = require('./gestes-defaut.js'), j = require('./jeu-android-1055.json');
+  const modele = G.entrainer(D.map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 0) })));
+  const dir = (g) => { const v = D.filter((e) => e.geste === g).map((e) => A.sensDuCoup(e.mesures, e.t)).reduce((p, x) => { const n = Math.hypot(...x); return p.map((y, i) => y + x[i] / n); }, [0, 0, 0]); const n = Math.hypot(...v); return v.map((x) => x / n); };
+  const DIR = { bas: dir('bas'), haut: dir('haut'), gauche: dir('gauche') };
+  const m = j.mesures.filter((x) => x[1][0] !== null).map(([t, r, a]) => {
+    const e = convertir({ rotationRate: { alpha: r[0], beta: r[1], gamma: r[2] }, acceleration: { x: a[0], y: a[1], z: a[2] } });
+    return { t, rot: [e.rotationRate.alpha, e.rotationRate.beta, e.rotationRate.gamma], acc: [e.acceleration.x, e.acceleration.y, e.acceleration.z] };
+  });
+  const dec = G.creerDeclencheur({ seuil: j.seuil }); let justes = 0, total = 0;
+  for (const x of m) if (dec.traiter(x.rot, x.t)) {
+    const fen = m.filter((y) => y.t >= x.t - 100 && y.t <= x.t + 200), v = A.sensDuCoup(fen, x.t), n = Math.hypot(...v);
+    const vrai = Object.keys(DIR).find((g) => v.reduce((s, c, i) => s + c * DIR[g][i], 0) / n > 0.7);
+    if (!vrai) continue;
+    total++; if (modele.classer(G.resumer(m.filter((y) => y.t <= x.t + 1), x.t, 0)) === vrai) justes++;
+  }
+  return { justes, total };
+}
+const UA_ANDROID = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36';
+const UA_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+test('Android : accélération remise dans la convention de l\'iPhone → coups reconnus (8 sur 10 au lieu de 1)', () => {
+  const { versIphone } = require('./android.js');
+  const brut = rejouerAndroid((e) => e), corrige = rejouerAndroid((e) => versIphone(e, UA_ANDROID));
+  assert.ok(brut.justes <= 1, `sans correction : ${brut.justes}/${brut.total}`);
+  assert.ok(corrige.total === 10 && corrige.justes >= 8, `avec correction : ${corrige.justes}/${corrige.total}`);
+});
+test('Android : seule l\'accélération change de signe ; iPhone et iPad : mesures inchangées', () => {
+  const { versIphone, estIphone } = require('./android.js'), e = { rotationRate: { alpha: 1, beta: -2, gamma: 3 }, acceleration: { x: 0.5, y: -1, z: null } };
+  assert.ok(estIphone(UA_IPHONE));
+  assert.ok(estIphone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 'MacIntel', 5));   // iPad
+  assert.ok(!estIphone(UA_ANDROID, 'Linux armv8l', 5));
+  assert.strictEqual(versIphone(e, UA_IPHONE), e);
+  const a = versIphone(e, UA_ANDROID, 'Linux armv8l', 5);
+  assert.deepStrictEqual(a.rotationRate, e.rotationRate);
+  assert.deepStrictEqual(a.acceleration, { x: -0.5, y: 1, z: null });
+});
+
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
