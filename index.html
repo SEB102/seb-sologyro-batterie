@@ -73,7 +73,7 @@
 </div>
 <div class="reglages">
   <button id="apprendre" class="secondaire reserve" hidden>Apprentissage</button>
-  <button id="enregistrement" class="secondaire reserve" hidden>Envoyer l'enregistrement</button>
+  <button id="enregistrement" class="secondaire">Envoyer l'enregistrement</button>
   <label>Sensibilité <input type="range" id="seuil" min="0" max="100" step="1"> <span id="vseuil"></span></label>
   <button id="noir" class="secondaire">Écran noir verrouillé (appui long 2 s pour revenir)</button>
 </div>
@@ -81,7 +81,7 @@
 <div id="sonCoupe" hidden>Son coupé par l'iPhone : touche l'écran pour le réactiver</div>
 <div id="ecranNoir" hidden><div id="indiceNoir">appui long 2 s pour revenir</div></div>
 <footer class="cartouche">SEB-SOLOGYRO-BATTERIE · Sébastien Gay · Octobre 2026 · <a href="https://github.com/SEB102/seb-sologyro-batterie#readme" target="_blank" rel="noopener">Mode d'emploi</a> · <a href="https://github.com/SEB102/seb-sologyro-batterie/blob/main/LICENSE" target="_blank" rel="noopener">Licence CC BY-NC 4.0</a></footer>
-<div id="version" style="font-size:11px;color:#555">version 2026-10-23ad</div>
+<div id="version" style="font-size:11px;color:#555">version 2026-10-25a</div>
 <script>
 // Toute erreur s'affiche à l'écran (pas de console sur un téléphone)
 const montrerErreur = (m) => { const e = document.getElementById('etat'); e.textContent = 'Erreur : ' + m; e.style.color = '#e66'; };
@@ -172,8 +172,8 @@ $('seuil').oninput = (e) => appliquerSeuil(Detecteur.sensibiliteVersSeuil(Number
 const enreg = { duree: 90000, mesures: [], sons: [] };
 function noterSon(geste, force) { enreg.sons.push([Math.round(performance.now()), geste.id, Math.round(force * 100) / 100]); }
 function noterMesure(e, t) {
-  const r = e.rotationRate || {}, a = e.acceleration || {}, v = (x) => (typeof x === 'number' ? Math.round(x * 100) / 100 : null);
-  enreg.mesures.push([Math.round(t * 10) / 10, [v(r.alpha), v(r.beta), v(r.gamma)], [v(a.x), v(a.y), v(a.z)]]);
+  const r = e.rotationRate || {}, a = e.acceleration || {}, g = e.accelerationIncludingGravity || {}, v = (x) => (typeof x === 'number' ? Math.round(x * 100) / 100 : null);
+  enreg.mesures.push([Math.round(t * 10) / 10, [v(r.alpha), v(r.beta), v(r.gamma)], [v(a.x), v(a.y), v(a.z)], [v(g.x), v(g.y), v(g.z)]]);
   if (enreg.mesures.length > 7000) { const k = enreg.mesures.findIndex((m) => m[0] >= t - enreg.duree); enreg.mesures.splice(0, k); enreg.sons.splice(0, enreg.sons.findIndex((x) => x[0] >= t - enreg.duree)); }
 }
 $('enregistrement').onclick = () => {
@@ -181,7 +181,7 @@ $('enregistrement').onclick = () => {
   const nom = 'gyro-jeu-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json';
   const contenu = { appareil: navigator.userAgent, version: $('version').textContent, seuil: reglages.seuil, attente: jeu.attente, moment: jeu.moment,
     main, sons: sonsChoisis, appris: (() => { try { return JSON.parse(localStorage.getItem(JeuGestes.CLE) || 'null'); } catch { return null; } })(),
-    colonnes: { mesures: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²'], sons: ['t ms', 'geste', 'force'] },
+    colonnes: { mesures: ['t ms', 'rotation [alpha, beta, gamma] °/s', 'accélération [x, y, z] m/s²', 'accélération avec gravité [x, y, z] m/s²'], sons: ['t ms', 'geste', 'force'] },
     mesures: enreg.mesures, sonsJoues: enreg.sons };
   const fichier = new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [fichier] })) return navigator.share({ files: [fichier], title: nom }).catch(() => {});
