@@ -495,9 +495,12 @@ test('sons : grosse caisse et cymbale se jouent sans erreur', () => {
 
 // ---- Android (25/10/2026) : accélération de signe opposé à l'iPhone sur les 3 axes, rotation identique (android.js) ----
 // Vérité de référence : le sens de rotation du coup (même convention sur les deux), à cos > 0,7 de la direction apprise du geste.
-function rejouerAndroid(convertir) {
-  const G = require('./gestes.js'), A = require('./apprentissage.js'), D = require('./gestes-defaut.js'), j = require('./jeu-android-1055.json');
-  const modele = G.entrainer(D.map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 0) })));
+// fichier : jeu enregistré ; G : module de reconnaissance (éventuellement en rotation seule) ; avec ses exemples appris, seuls les
+// coups joués après l'apprentissage comptent.
+function rejouerAndroid(convertir, { fichier = './jeu-android-1055.json', G = require('./gestes.js') } = {}) {
+  const A = require('./apprentissage.js'), D = require('./gestes-defaut.js'), j = require(fichier);
+  const appris = (j.appris && j.appris.exemples) || [], apres = appris.length ? Math.max(...appris.map((e) => e.t)) + 1500 : -Infinity;
+  const modele = G.entrainer(D.concat(appris).map((e) => ({ geste: e.geste, resume: G.resumer(e.mesures, e.t, 0) })));
   const dir = (g) => { const v = D.filter((e) => e.geste === g).map((e) => A.sensDuCoup(e.mesures, e.t)).reduce((p, x) => { const n = Math.hypot(...x); return p.map((y, i) => y + x[i] / n); }, [0, 0, 0]); const n = Math.hypot(...v); return v.map((x) => x / n); };
   const DIR = { bas: dir('bas'), haut: dir('haut'), gauche: dir('gauche') };
   const m = j.mesures.filter((x) => x[1][0] !== null).map(([t, r, a]) => {
@@ -505,7 +508,7 @@ function rejouerAndroid(convertir) {
     return { t, rot: [e.rotationRate.alpha, e.rotationRate.beta, e.rotationRate.gamma], acc: [e.acceleration.x, e.acceleration.y, e.acceleration.z] };
   });
   const dec = G.creerDeclencheur({ seuil: j.seuil }); let justes = 0, total = 0;
-  for (const x of m) if (dec.traiter(x.rot, x.t)) {
+  for (const x of m) if (dec.traiter(x.rot, x.t) && x.t > apres) {
     const fen = m.filter((y) => y.t >= x.t - 100 && y.t <= x.t + 200), v = A.sensDuCoup(fen, x.t), n = Math.hypot(...v);
     const vrai = Object.keys(DIR).find((g) => v.reduce((s, c, i) => s + c * DIR[g][i], 0) / n > 0.7);
     if (!vrai) continue;
@@ -530,6 +533,24 @@ test('Android : seule l\'accélération change de signe ; iPhone et iPad : mesur
   const a = versIphone(e, UA_ANDROID, 'Linux armv8l', 5);
   assert.deepStrictEqual(a.rotationRate, e.rotationRate);
   assert.deepStrictEqual(a.acceleration, { x: -0.5, y: 1, z: null });
+});
+// Rotation seule sur Android : l'accélération sans gravité est calculée par chaque fabricant (sur cet Android : 5 à 10 fois plus
+// forte que sur l'iPhone) ; la rotation est mesurée directement, en °/s partout.
+test('Android : rotation seule → coups reconnus sans apprentissage, et toujours après l\'apprentissage', () => {
+  const { versIphone, rotationSeule } = require('./android.js'), G = rotationSeule(require('./gestes.js'), UA_ANDROID, 'Linux armv8l', 5);
+  const conv = (e) => versIphone(e, UA_ANDROID);
+  const sans = rejouerAndroid(conv, { G }), apres = rejouerAndroid(conv, { G, fichier: './jeu-android-1107.json' });
+  assert.ok(sans.total === 10 && sans.justes >= 8, `sans apprentissage : ${sans.justes}/${sans.total}`);
+  assert.ok(apres.total === 13 && apres.justes >= 12, `après apprentissage : ${apres.justes}/${apres.total}`);   // 12/13 aussi avec l'accélération
+});
+test('Android : la rotation seule ne garde que les valeurs de rotation du résumé ; iPhone : module inchangé', () => {
+  const { rotationSeule } = require('./android.js'), G = require('./gestes.js'), D = require('./gestes-defaut.js');
+  assert.strictEqual(rotationSeule(G, UA_IPHONE), G);
+  const R = rotationSeule(G, UA_ANDROID, 'Linux armv8l', 5), e = D[0], r = G.resumer(e.mesures, e.t, 0), s = R.resumer(e.mesures, e.t, 0);
+  assert.notStrictEqual(R, G);
+  assert.deepStrictEqual(s.slice(0, r.length / 2), r.slice(0, r.length / 2));
+  assert.ok(s.slice(r.length / 2).every((v) => v === 0) && r.slice(r.length / 2).some((v) => v !== 0));
+  assert.strictEqual(G.resumer, require('./gestes.js').resumer);   // le module d'origine n'est pas touché
 });
 
 console.log(`\n${ok} tests réussis${process.exitCode ? ' — DES ÉCHECS' : ''}`);
